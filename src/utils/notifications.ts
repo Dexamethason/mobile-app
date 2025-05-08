@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Interfejs dla obiektu leku
+// interfejs dla leku
 interface Medicine {
   id: string;
   name: string;
@@ -11,7 +11,7 @@ interface Medicine {
   oneTimeTime: string;
 }
 
-// Konfiguracja handlera powiadomień
+// ustawienia handlera 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -20,7 +20,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Funkcja do planowania powiadomienia dla leku jednorazowego
+// funkcja do planowania powiadomień (jednorazowe leki)
 export const scheduleOneTimeMedicineNotification = async (medicine: Medicine) => {
   try {
     const { status } = await Notifications.requestPermissionsAsync();
@@ -29,18 +29,18 @@ export const scheduleOneTimeMedicineNotification = async (medicine: Medicine) =>
       return;
     }
 
-    // Utwórz datę powiadomienia
+    // data powiadomienia
     const notificationDate = new Date(medicine.oneTimeDate);
     const [hours, minutes] = medicine.oneTimeTime.split(':');
     notificationDate.setHours(parseInt(hours), parseInt(minutes), 0);
 
-    // Sprawdź czy data nie jest z przeszłości
+    // sprawdzamy czy nie w przeszłości
     if (notificationDate <= new Date()) {
       console.log('Data powiadomienia jest z przeszłości');
       return;
     }
 
-    // Zaplanuj powiadomienie
+    // Planujemy powiadomienie
     const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
         title: `Czas na lek: ${medicine.name}`,
@@ -57,7 +57,7 @@ export const scheduleOneTimeMedicineNotification = async (medicine: Medicine) =>
       },
     });
 
-    // Zapisz ID powiadomienia
+    // zapisujemy id
     const notificationsMap = await AsyncStorage.getItem('medicineNotifications') || '{}';
     const notifications = JSON.parse(notificationsMap);
     notifications[medicine.id] = notificationId;
@@ -69,7 +69,7 @@ export const scheduleOneTimeMedicineNotification = async (medicine: Medicine) =>
   }
 };
 
-// Funkcja do anulowania powiadomienia dla leku
+// anulowanie powiadomień
 export const cancelMedicineNotification = async (medicineId: string) => {
   try {
     const notificationsMap = await AsyncStorage.getItem('medicineNotifications') || '{}';
@@ -85,13 +85,13 @@ export const cancelMedicineNotification = async (medicineId: string) => {
   }
 };
 
-// Funkcja do aktualizacji powiadomienia dla leku
+// aktualizacja powiadomień
 export const updateMedicineNotification = async (medicine: Medicine) => {
   try {
-    // Najpierw anuluj istniejące powiadomienie
+    // najpierw usuwamy stare
     await cancelMedicineNotification(medicine.id);
     
-    // Jeśli to lek jednorazowy, zaplanuj nowe powiadomienie
+    // jak jednorazowy to planujemy nowe
     if (!medicine.isRegular) {
       await scheduleOneTimeMedicineNotification(medicine);
     }

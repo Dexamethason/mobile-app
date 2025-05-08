@@ -38,7 +38,7 @@ const SettingsScreen = () => {
     setSelectedSound(soundId);
   };
 
-  // Reset all history automatically migrates to the new status format
+  // resetuje całą historię i migruje do nowego formatu statusów
   const resetHistory = async () => {
     Alert.alert(
       'Reset historii',
@@ -72,7 +72,7 @@ const SettingsScreen = () => {
 
   const testNotification = async () => {
     try {
-      // Request permissions first
+      // najpierw uprawnienia
       const { status } = await Notifications.requestPermissionsAsync();
       
       if (status !== 'granted') {
@@ -84,7 +84,7 @@ const SettingsScreen = () => {
         return;
       }
 
-      // Schedule a local notification that triggers immediately
+      // wysyłamy powiadomienie testowe od razu
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Test powiadomień',
@@ -92,7 +92,7 @@ const SettingsScreen = () => {
           sound: selectedSound === 'default' ? undefined : selectedSound,
           data: { screen: 'Reminders' },
         },
-        trigger: null, // null means the notification triggers immediately
+        trigger: null, // null znaczy że powiadomienie wyskoczy od razu
       });
 
       Alert.alert('Sukces', 'Testowe powiadomienie zostało wysłane.');
@@ -137,7 +137,7 @@ const SettingsScreen = () => {
               </TouchableOpacity>
             ))}
 
-            {/* Test Notification Button */}
+            {/* przycisk do testów */}
             <TouchableOpacity 
               style={styles.testButton}
               onPress={testNotification}

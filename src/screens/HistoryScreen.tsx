@@ -37,12 +37,12 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
   const [viewMode, setViewMode] = useState('month'); // 'month', 'week', or 'day'
   const [loading, setLoading] = useState(true);
 
-  // Load history from storage
+  // ładuje historię z pamięci
   useEffect(() => {
     loadHistory();
   }, []);
 
-  // Enhanced reload history when screen is focused
+  // lepsze odświeżanie historii po powrocie na ekran
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       console.log("HistoryScreen focused - reloading history");
@@ -52,7 +52,7 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     return unsubscribe;
   }, [navigation]);
 
-  // Check for legacy data format and migrate if needed
+  // sprawdza starszy format danych i migruje jak trzeba
   useEffect(() => {
     const checkAndMigrateHistory = async () => {
       const migrated = await migrateLegacyHistory();
@@ -65,21 +65,21 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     checkAndMigrateHistory();
   }, []);
 
-  // Add deletion check with improved detection of deletion type
+  // sprawdza czy leki zostały usunięte z lepszym wykrywaniem typu
   useEffect(() => {
-    // Check for medicine deletions
+    // funkcja sprawdzająca usunięcia leków
     const checkForDeletions = async () => {
       try {
         const deletionJson = await AsyncStorage.getItem('lastDeletedMedicine');
         if (deletionJson) {
           const deletion = JSON.parse(deletionJson);
-          // Check if this deletion is recent (within the last 10 seconds)
+          // sprawdza czy to niedawne usunięcie (ostatnie 10s)
           const isRecent = Date.now() - deletion.timestamp < 10000;
           
           if (isRecent) {
             console.log(`Recent deletion detected for medicine ${deletion.id}, refreshing history`);
             loadHistory();
-            // Clear the deletion flag to prevent duplicate processing
+            // wyczyść flagę żeby nie przetwarzać dwa razy
             await AsyncStorage.removeItem('lastDeletedMedicine');
           }
         }
@@ -88,54 +88,54 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
       }
     };
     
-    // Set up a timer to check for deletions
-    const timer = setInterval(checkForDeletions, 1000); // Check more frequently
+    // timer do sprawdzania usunięć
+    const timer = setInterval(checkForDeletions, 1000); // sprawdzaj częściej
     
-    // Initial check
+    // sprawdź od razu
     checkForDeletions();
     
     return () => clearInterval(timer);
   }, []);
 
-  // Make loadHistory more robust
+  // lepsza funkcja ładowania historii
   const loadHistory = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Load history data directly from storage
+      // załaduj dane historii prosto z pamięci
       const historyJson = await AsyncStorage.getItem('medicineHistory');
       let formattedHistory: MedicineHistoryState = {};
       
       if (historyJson) {
         const history = JSON.parse(historyJson) as Record<string, MedicineRecord[]>;
         
-        // Format history for calendar marking and ensure no empty entries
+        // formatuj dane dla kalendarza i upewnij się że nie ma pustych wpisów
         Object.entries(history).forEach(([date, medicines]) => {
-          // Skip dates with no medicines
+          // pomiń daty bez leków
           if (!medicines || !Array.isArray(medicines) || medicines.length === 0) {
             return;
           }
           
-          // Sort medicines by time
+          // sortuj leki po czasie
           const sortedMedicines = [...medicines].sort((a, b) => {
             return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
           });
           
-          // Process statuses
+          // przetwarza statusy
           const allTaken = sortedMedicines.every(med => med.status === 'taken');
           const anyTaken = sortedMedicines.some(med => med.status === 'taken');
           const allSkipped = sortedMedicines.every(med => med.status === 'skipped');
           
-          // Determine the dot color based on medicine statuses
+          // wybierz kolor kropki na podstawie statusów leków
           let dotColor;
           if (allTaken) {
-            dotColor = '#4CAF50'; // Green for all taken
+            dotColor = '#4CAF50'; // zielony jak wszystkie wzięte
           } else if (anyTaken) {
-            dotColor = '#FFC107'; // Yellow for some taken
+            dotColor = '#FFC107'; // żółty jak niektóre wzięte
           } else if (allSkipped) {
-            dotColor = '#F44336'; // Red for all skipped
+            dotColor = '#F44336'; // czerwony jak wszystkie pominięte
           } else {
-            dotColor = '#FFC107'; // Yellow for planned
+            dotColor = '#FFC107'; // żółty dla zaplanowanych
           }
 
           formattedHistory[date] = {
@@ -146,7 +146,7 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
         });
       }
       
-      // Update state with new history data
+      // aktualizuj stan nowymi danymi historii
       setMedicineHistory(formattedHistory);
       console.log('History data reloaded successfully');
     } catch (error) {
@@ -156,12 +156,11 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
-  // Add a manual refresh button
+  // odśwież
   const forceRefresh = () => {
     loadHistory();
   };
 
-  // Selected day's medicine history
   const selectedDayMedicines = selectedDate && medicineHistory[selectedDate] ? 
     medicineHistory[selectedDate].medicines : [];
 
@@ -220,7 +219,7 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Add debug button
+  // przycisk debugowania
   const debugHistoryData = async () => {
     try {
       const historyJson = await AsyncStorage.getItem('medicineHistory');
@@ -235,13 +234,13 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
               console.log(`  #${i+1} ${med.name} - ${med.time} - status: ${med.status}`);
               console.log(`     timestamp: ${med.timestamp}`);
               
-              // Check if this medicine is in the future
+              // sprawdza czy lek jest w przyszłości
               const medTime = new Date(med.timestamp);
               const now = new Date();
               console.log(`     isFuture: ${medTime > now}`);
             });
           } else if (history[date] && history[date].medicines) {
-            // Handle processed history format
+            // obsługuje przetworzony format historii
             history[date].medicines.forEach((med: MedicineRecord, i: number) => {
               console.log(`  #${i+1} ${med.name} - ${med.time} - status: ${med.status}`);
             });
@@ -257,28 +256,28 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
-  // Updated rendering to handle the three status values
+  // lepszy rendering obsługujący trzy wartości statusu
   const renderMedicineItem = ({ item }: { item: MedicineRecord }) => {
-    // Parse dates for comparison
+    // parsuj daty do porównania
     const isFuture = isDateTimeInFuture(item.timestamp);
     
-    // Log the status for debugging
+    // loguj status do debugowania
     console.log(`Rendering medicine: ${item.name}, time: ${item.time}, status: ${item.status}, isFuture: ${isFuture}, timestamp: ${item.timestamp}`);
     
-    // Determine display status and style
+    // ustal status do wyświetlenia i styl
     let statusStyle, statusText;
     
     if (isFuture) {
       statusStyle = styles.plannedButton;
       statusText = 'Zaplanowany';
     } else {
-      // For past medicines, use the assigned status for display, but default to "Pominięty" if still marked as "planned"
+      // dla przeszłych leków użyj przypisanego statusu, ale domyślnie "Pominięty" jeśli wciąż oznaczone jako "planned"
       switch(item.status) {
         case 'taken':
           statusStyle = styles.takenButton;
           statusText = 'Zażyty';
           break;
-        case 'planned': // For past dates that are still marked as "planned", show as "Pominięty" instead
+        case 'planned': // dla przeszłych dat, które nadal są oznaczone jako "planned", pokaż jako "Pominięty"
           statusStyle = styles.notTakenButton;
           statusText = 'Pominięty';
           break;
@@ -317,7 +316,7 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
     );
   }
 
-  // Update the return to include a debug button
+  // zaktualizowany return z przyciskiem debug
   return (
     <View style={styles.container}>
       <View style={styles.filterContainer}>

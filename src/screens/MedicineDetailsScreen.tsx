@@ -35,18 +35,18 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [medicine, setMedicine] = useState<Medicine | null>(null);
   const [loading, setLoading] = useState(true);
   
-  // Load medicine details with a force refresh parameter
+  // ładuj szczegóły leku z parametrem do wymuszonego odświeżenia
   useEffect(() => {
     loadMedicine();
   }, [medicineId]);
 
-  // Add another effect to handle navigation params
+  // dodatkowy efekt na obsługę parametrów nawigacji
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      // Check if we need to refresh when coming back to this screen
+      // sprawdź czy trzeba odświeżyć jak wracamy na ten ekran
       if (route.params?.refresh) {
         loadMedicine();
-        // Clear the refresh flag
+        // wyczyść flagę odświeżania
         navigation.setParams({ refresh: undefined });
       }
     });
@@ -54,7 +54,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     return unsubscribe;
   }, [navigation, route.params?.refresh]);
 
-  // Load medicine from storage
+  // ładowanie leku z pamięci
   const loadMedicine = async () => {
     try {
       setLoading(true);
@@ -81,7 +81,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // Add effect to check for updates instead of callback
+  // dodaj efekt do sprawdzania aktualizacji zamiast callbacka
   useEffect(() => {
     const checkMedicineUpdates = async () => {
       try {
@@ -89,7 +89,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
         if (updateJson) {
           const update = JSON.parse(updateJson);
           
-          // Check if this update is for the current medicine and is recent (last 2 seconds)
+          // sprawdź czy ta aktualizacja dotyczy obecnego leku i jest nowa (ostatnie 2 sekundy)
           if (update.id === medicineId && Date.now() - update.timestamp < 2000) {
             console.log(`Medicine ${medicineId} was recently updated, reloading...`);
             await AsyncStorage.removeItem('lastUpdatedMedicine');
@@ -101,21 +101,21 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
     
-    // Check periodically for updates
+    // sprawdzaj okresowo aktualizacje
     const interval = setInterval(checkMedicineUpdates, 1000);
-    checkMedicineUpdates(); // Check immediately
+    checkMedicineUpdates(); // sprawdź od razu
     
     return () => clearInterval(interval);
   }, [medicineId]);
 
-  // Handle medicine update
+  // obsługa aktualizacji leku
   const handleMedicineUpdate = (updatedMedicine: Medicine) => {
     console.log("Medicine updated in details screen:", updatedMedicine);
     setMedicine(updatedMedicine);
     updateMedicineInStorage(updatedMedicine);
   };
 
-  // Update medicine in AsyncStorage
+  // zapisz lek w AsyncStorage
   const updateMedicineInStorage = async (updatedMedicine: Medicine) => {
     try {
       const storedMedicines = await AsyncStorage.getItem('medicines');
@@ -132,7 +132,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // Improved delete medicine function to only remove planned entries
+  // lepsza funkcja usuwania leku która usuwa tylko planowane wpisy
   const handleDelete = async () => {
     Alert.alert(
       'Usuń lek',
@@ -143,18 +143,18 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           text: 'Usuń', 
           onPress: async () => {
             try {
-              // Display loading indicator
+              // pokaż wskaźnik ładowania
               setLoading(true);
               
               console.log(`Starting deletion of medicine: ${medicineId}`);
               
-              // Cancel scheduled notifications
+              // anuluj zaplanowane powiadomienia
               await cancelMedicineNotification(medicineId);
               
-              // Remove planned entries from history (keep past history)
+              // usuń planowane wpisy z historii (zachowaj przeszłą historię)
               await removeFromHistory(medicineId, true);
               
-              // Remove from medicines list in storage
+              // usuń z listy leków w pamięci
               const storedMedicinesJson = await AsyncStorage.getItem('medicines');
               if (storedMedicinesJson) {
                 const storedMedicines = JSON.parse(storedMedicinesJson);
@@ -162,7 +162,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
                 await AsyncStorage.setItem('medicines', JSON.stringify(updatedMedicines));
               }
               
-              // Store deletion notification for other screens
+              // zapisz powiadomienie o usunięciu dla innych ekranów
               await AsyncStorage.setItem('lastDeletedMedicine', JSON.stringify({
                 id: medicineId,
                 timestamp: Date.now(),
@@ -171,7 +171,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
               
               console.log(`Medicine ${medicineId} successfully deleted`);
               
-              // Go back to the previous screen with a refresh flag
+              // wróć na poprzedni ekran z flagą do odświeżenia
               navigation.navigate('Medicines', { refresh: true });
             } catch (error) {
               console.error('Error deleting medicine:', error);
@@ -185,7 +185,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
-  // Format date display
+  // formatowanie wyświetlania daty
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('pl-PL', {
@@ -195,7 +195,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   };
 
-  // Show placeholders during loading
+  // pokaż placeholdery podczas ładowania
   if (loading || !medicine) {
     return (
       <View style={[styles.container, styles.centerContainer]}>
@@ -285,7 +285,7 @@ const MedicineDetailsScreen: React.FC<Props> = ({ route, navigation }) => {
           style={[styles.button, styles.editButton]}
           onPress={() => navigation.navigate('AddEditMedicine', { 
             medicine, 
-            refresh: true  // Add refresh flag
+            refresh: true  // dodaj flagę odświeżania
           })}
         >
           <Ionicons name="create-outline" size={20} color="white" />

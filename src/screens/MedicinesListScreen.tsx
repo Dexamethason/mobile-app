@@ -11,11 +11,11 @@ const MedicinesListScreen = ({ navigation, route }) => {
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load medicines from storage and add a more robust cleanup function
+  // ładowanie leków z pamięci i dodanie lepszej funkcji czyszczenia
   useEffect(() => {
     loadMedicines();
     
-    // Add a focus listener to refresh data when screen becomes active
+    // focus listener do odświeżania jak ekran będzie widoczny
     const unsubscribe = navigation.addListener('focus', () => {
       console.log('MedicinesListScreen focused - refreshing data');
       loadMedicines();
@@ -24,7 +24,7 @@ const MedicinesListScreen = ({ navigation, route }) => {
     return unsubscribe;
   }, [navigation]);
 
-  // Handle medicine data update/creation from AddEditMedicineScreen
+  // obsługa aktualizacji danych po edycji
   useEffect(() => {
     if (route.params?.updatedMedicine) {
       const updatedMedicine = route.params.updatedMedicine;
@@ -33,25 +33,25 @@ const MedicinesListScreen = ({ navigation, route }) => {
         const medicineIndex = currentMedicines.findIndex(med => med.id === updatedMedicine.id);
         
         if (medicineIndex !== -1) {
-          // Update existing medicine
+          // aktualizacja istniejącego leku
           const newMedicines = [...currentMedicines];
           newMedicines[medicineIndex] = updatedMedicine;
           saveMedicines(newMedicines);
           return newMedicines;
         } else {
-          // Add new medicine
+          // nowy lek do dodania
           const newMedicines = [...currentMedicines, updatedMedicine];
           saveMedicines(newMedicines);
           return newMedicines;
         }
       });
       
-      // Clear the param to prevent re-processing
+      // czyszczymy parametr żeby nie przetwarzać znowu
       navigation.setParams({ updatedMedicine: null });
     }
   }, [route.params?.updatedMedicine]);
 
-  // Improved load medicines function that also cleans up deleted items
+  // lepsza funkcja do ładowania leków która czyści też usunięte rzeczy
   const loadMedicines = useCallback(async () => {
     try {
       setLoading(true);
@@ -74,7 +74,7 @@ const MedicinesListScreen = ({ navigation, route }) => {
     }
   }, []);
 
-  // Save medicines to AsyncStorage
+  // zapis leków do AsyncStorage
   const saveMedicines = async (medicinesData) => {
     try {
       await AsyncStorage.setItem('medicines', JSON.stringify(medicinesData));
@@ -84,16 +84,16 @@ const MedicinesListScreen = ({ navigation, route }) => {
     }
   };
 
-  // Handle saving medicine from AddEditMedicineScreen
+  // obsługa zapisu leku z AddEditMedicineScreen
   const handleSaveMedicine = (medicine) => {
     navigation.setParams({ updatedMedicine: medicine });
   };
 
-  // Add a function to force refresh data across the app when a medicine is deleted
+  // funkcja do wymuszenia odświeżenia danych w innych ekranach po usunięciu
   const notifyMedicineDeleted = async (id) => {
-    // This could be expanded to use a better state management system like Context or Redux
+    // to moglby być lepsze z Reduxem albo Context API xd
     try {
-      // Store a flag in AsyncStorage that other screens can check
+      // zapis flagi w AsyncStorage ktorą inne ekrany mogą sprawdzać
       await AsyncStorage.setItem('lastDeletedMedicine', JSON.stringify({
         id,
         timestamp: Date.now()
@@ -103,7 +103,7 @@ const MedicinesListScreen = ({ navigation, route }) => {
     }
   };
 
-  // Improved delete medicine function to only remove planned entries
+  // lepsza funkcja usuwania co usuwa tylko planowane wpisy
   const deleteMedicine = (id) => {
     Alert.alert(
       'Usuń lek',
@@ -114,17 +114,17 @@ const MedicinesListScreen = ({ navigation, route }) => {
           text: 'Usuń', 
           onPress: async () => {
             try {
-              setLoading(true); // Show loading indicator
+              setLoading(true); // pokaż ładowanie żeby nie klikali 2x
               
               console.log(`Starting deletion process for medicine: ${id}`);
               
-              // Cancel any scheduled notifications
+              // anulujemy powiadomienia
               await cancelMedicineNotification(id);
               
-              // Only remove planned entries from history
+              // usuwamy tylko zaplanowane wpisy z historii
               await removeFromHistory(id, true);
               
-              // Remove from medicines list in storage
+              // usuwamy z listy leków w pamięci
               const storedMedicinesJson = await AsyncStorage.getItem('medicines');
               if (storedMedicinesJson) {
                 const storedMedicines = JSON.parse(storedMedicinesJson);
@@ -132,14 +132,14 @@ const MedicinesListScreen = ({ navigation, route }) => {
                 await AsyncStorage.setItem('medicines', JSON.stringify(updatedMedicines));
               }
               
-              // Update local state to remove the medicine immediately
+              // aktualizacja lokalnego stanu od razu
               setMedicines(prevMedicines => {
                 const updatedMedicines = prevMedicines.filter(med => med.id !== id);
                 console.log(`Updated medicines list now contains ${updatedMedicines.length} items`);
                 return updatedMedicines;
               });
               
-              // Notify other screens about the deletion
+              // daj znać innym ekranom o usunięciu
               await AsyncStorage.setItem('lastDeletedMedicine', JSON.stringify({
                 id,
                 timestamp: Date.now(),
@@ -148,13 +148,13 @@ const MedicinesListScreen = ({ navigation, route }) => {
               
               console.log(`Medicine ${id} successfully deleted`);
               
-              // Show confirmation to user
+              // pokaż komunikat dla użytkownika
               Alert.alert('Sukces', 'Lek został usunięty.');
             } catch (error) {
               console.error('Error deleting medicine:', error);
               Alert.alert('Błąd', 'Nie udało się usunąć leku.');
             } finally {
-              setLoading(false); // Hide loading indicator
+              setLoading(false); // schowaj loader
             }
           },
           style: 'destructive'
@@ -167,7 +167,7 @@ const MedicinesListScreen = ({ navigation, route }) => {
     medicine.name.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  // Format the schedule display
+  // Formatowanie wyświetlania harmonogramu
   const getScheduleDisplay = (medicine) => {
     if (medicine.isRegular) {
       const activeDaysCount = medicine.selectedDays.filter(Boolean).length;
@@ -208,7 +208,7 @@ const MedicinesListScreen = ({ navigation, route }) => {
     </TouchableOpacity>
   );
 
-  // Updated render to include a refresh button and loading indicator
+  // Zaktualizowany render z przyciskiem odświeżania i wskaźnikiem ładowania
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { formatTime, getDateString } from './dateUtils';
 import { pl } from 'date-fns/locale';
 
-// Define medicine status types
+// typy statusu leku
 export type MedicineStatus = 'taken' | 'skipped' | 'planned';
 
 interface Medicine {
@@ -20,7 +20,7 @@ interface MedicineRecord {
   timestamp: string;
 }
 
-// Debug function to help with troubleshooting
+// funkcja do wyświetlania problemów (do debugów)
 const debugHistory = async (label = "Current History") => {
   try {
     const historyJson = await AsyncStorage.getItem('medicineHistory');
@@ -42,7 +42,7 @@ const debugHistory = async (label = "Current History") => {
   }
 };
 
-// Add a medicine dose to history - properly handle existing records
+// dodaj dawkę leku do historii - ogarnia istniejące rekordy
 export const recordMedicineDose = async (medicine: Medicine, status: MedicineStatus = 'planned', date = new Date()) => {
   try {
     await debugHistory("Before recordMedicineDose");
@@ -50,16 +50,16 @@ export const recordMedicineDose = async (medicine: Medicine, status: MedicineSta
     const dateString = getDateString(date);
     const now = new Date();
     
-    // Get existing history
+    // bierzemy istniejącą historię
     const historyJson = await AsyncStorage.getItem('medicineHistory');
     const history = historyJson ? JSON.parse(historyJson) : {};
     
-    // Prepare the record - force planned for future dates
+    // tworzymy rekord - przyszłe zawsze jako planned
     const isFuture = date > now;
-    // Set default status based on date (planned for future, skipped for past)
+    // domyślny status zależy od daty (planned dla przyszłości, skipped dla przeszłości)
     let defaultStatus: MedicineStatus = isFuture ? 'planned' : 'skipped';
     
-    // If status is provided and date is not in future, use the provided status
+    // jak podany status i nie jest w przyszłości to bierzemy podany
     const finalStatus = isFuture ? 'planned' : status;
     
     const formattedTime = formatTime(date);
@@ -75,34 +75,34 @@ export const recordMedicineDose = async (medicine: Medicine, status: MedicineSta
     
     console.log(`Recording medicine ${medicine.name} for ${dateString}, status=${medicineRecord.status}, isFuture=${isFuture}`);
     
-    // Initialize date entry if needed
+    // dodajemy nowy wpis dla daty jeśli nie ma
     if (!history[dateString]) {
       history[dateString] = [];
     }
     
-    // Look for an existing record with the same medicine ID and time
+    // szukamy czy już jest taki lek o tej porze
     const existingIndex = history[dateString].findIndex((record: any) => 
       record.id.startsWith(`${medicine.id}_`) && record.time === formattedTime
     );
     
     if (existingIndex !== -1) {
       console.log(`Updating existing record at index ${existingIndex}`);
-      // Update the existing record but preserve status for past records
+      // aktualizuj istniejący rekord ale zachowaj status dla przeszłych
       if (isFuture) {
-        // For future records, always set status to planned
+        // przyszłe zawsze planned
         history[dateString][existingIndex].status = 'planned';
       } else {
-        // For past records, update the status as requested
+        // dla przeszłych aktualizujemy status
         history[dateString][existingIndex].status = status;
       }
       history[dateString][existingIndex].timestamp = date.toISOString();
     } else {
       console.log(`Adding new record`);
-      // Add as new record
+      // dodaj nowy rekord
       history[dateString].push(medicineRecord);
     }
     
-    // Save updated history
+    // zapisz historię
     await AsyncStorage.setItem('medicineHistory', JSON.stringify(history));
     
     await debugHistory("After recordMedicineDose");
@@ -114,19 +114,19 @@ export const recordMedicineDose = async (medicine: Medicine, status: MedicineSta
   }
 };
 
-// Clear all history and reset to default state
+// resetuj całą historię i przywróć domyślny stan
 export const resetAllHistory = async () => {
   try {
     console.log("Starting complete history reset");
     
-    // Completely remove the current history
+    // usuwamy całą historię
     await AsyncStorage.removeItem('medicineHistory');
     
-    // Create a new empty history object
+    // tworzymy pustą historię
     const emptyHistory = {};
     await AsyncStorage.setItem('medicineHistory', JSON.stringify(emptyHistory));
     
-    // Get saved medicines to recreate proper entries
+    // pobierz zapisane leki żeby odtworzyć wpisy
     const medicinesJson = await AsyncStorage.getItem('medicines');
     if (!medicinesJson) {
       console.log("No medicines found to restore");
@@ -139,30 +139,30 @@ export const resetAllHistory = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Create history entries for each medicine
+    // tworzymy wpisy dla każdego leku
     for (const medicine of medicines) {
       console.log(`Processing medicine: ${medicine.name}`);
       
       if (medicine.isRegular) {
-        // For regular medicine, create entries for today
+        // dla regularnych - dodaj na dziś
         if (medicine.times && medicine.times.length > 0) {
           for (const time of medicine.times) {
             const [hours, minutes] = time.split(':');
             const scheduleTime = new Date(today);
             scheduleTime.setHours(parseInt(hours), parseInt(minutes));
             
-            // Always create with status=planned initially
+            // zawsze jako planned na początek
             console.log(`Adding regular medicine ${medicine.name} at ${time}`);
             await recordMedicineDose(medicine, 'planned', scheduleTime);
           }
         }
       } else {
-        // For one-time medicine
+        // dla jednorazowych
         const oneTimeDate = new Date(medicine.oneTimeDate);
         const [hours, minutes] = medicine.oneTimeTime.split(':');
         oneTimeDate.setHours(parseInt(hours), parseInt(minutes));
         
-        // Create entry with appropriate status
+        // dodaj wpis z odpowiednim statusem
         console.log(`Adding one-time medicine ${medicine.name} on ${oneTimeDate.toISOString()}`);
         await recordMedicineDose(medicine, 'planned', oneTimeDate);
       }
@@ -176,7 +176,7 @@ export const resetAllHistory = async () => {
   }
 };
 
-// Get history for a specific date
+// pobierz historię dla konkretnej daty
 export const getHistoryForDate = async (date: Date) => {
   try {
     const dateString = getDateString(date);
@@ -189,7 +189,7 @@ export const getHistoryForDate = async (date: Date) => {
   }
 };
 
-// Clear history for a specific date
+// usuń historię dla konkretnej daty
 export const clearHistoryForDate = async (date: Date) => {
   try {
     const dateString = getDateString(date);
@@ -208,10 +208,10 @@ export const clearHistoryForDate = async (date: Date) => {
   }
 };
 
-// Get full medicine history
+// pobierz całą historię leków
 export const getMedicineHistory = async () => {
   try {
-    // Get existing history
+    // pobierz istniejącą historię
     const historyJson = await AsyncStorage.getItem('medicineHistory');
     return historyJson ? JSON.parse(historyJson) : {};
   } catch (error) {
@@ -220,10 +220,10 @@ export const getMedicineHistory = async () => {
   }
 };
 
-// Update a specific medicine record
+// aktualizuj konkretny rekord leku
 export const updateMedicineRecord = async (dateString: string, medicineId: string, updates: Partial<MedicineRecord>) => {
   try {
-    // Get existing history
+    // pobierz istniejącą historię
     const historyJson = await AsyncStorage.getItem('medicineHistory');
     const history = historyJson ? JSON.parse(historyJson) : {};
     
@@ -231,13 +231,13 @@ export const updateMedicineRecord = async (dateString: string, medicineId: strin
       const medicineIndex = history[dateString].findIndex((med: MedicineRecord) => med.id === medicineId);
       
       if (medicineIndex !== -1) {
-        // Update the record
+        // aktualizuj rekord
         history[dateString][medicineIndex] = {
           ...history[dateString][medicineIndex],
           ...updates
         };
         
-        // Save updated history
+        // zapisz zaktualizowaną historię
         await AsyncStorage.setItem('medicineHistory', JSON.stringify(history));
         return true;
       }
@@ -250,12 +250,12 @@ export const updateMedicineRecord = async (dateString: string, medicineId: strin
   }
 };
 
-// Process history data for calendar display with the new status field
+// przetwarzaj dane historii dla kalendarza z nowym polem statusu
 export const processHistoryForCalendar = (history: Record<string, any>) => {
   const processedHistory: Record<string, any> = {};
   const now = new Date();
   
-  // Go through each date in history
+  // przejdź przez każdą datę w historii
   Object.keys(history).forEach((date: string) => {
     const dayMedicines = history[date];
     
@@ -263,9 +263,9 @@ export const processHistoryForCalendar = (history: Record<string, any>) => {
       return;
     }
     
-    // Process each medicine to handle past 'planned' entries
+    // przetwarzaj każdy lek, aby obsłużyć przeszłe wpisy 'planned'
     const processedMedicines = dayMedicines.map(med => {
-      // If it's in the past and still marked as planned, treat it as skipped for display
+      // jeśli jest w przeszłości i nadal oznaczony jako planned, traktuj jako skipped do wyświetlenia
       const medDate = new Date(med.timestamp);
       if (medDate < now && med.status === 'planned') {
         return { ...med, displayStatus: 'skipped' };
@@ -273,78 +273,113 @@ export const processHistoryForCalendar = (history: Record<string, any>) => {
       return { ...med, displayStatus: med.status };
     });
     
-    // Check medicine statuses using display status
+    // sprawdź statusy leków używając display status
     const allTaken = processedMedicines.every((med: any) => med.displayStatus === 'taken');
     const anyTaken = processedMedicines.some((med: any) => med.displayStatus === 'taken');
     const allSkipped = processedMedicines.every((med: any) => med.displayStatus === 'skipped');
     
-    // Determine dot color based on medicine statuses
-    let dotColor = '#FFC107'; // Default yellow for planned
+    // określ kolor kropki na podstawie statusów leków
+    let dotColor = '#FFC107'; // domyślny żółty dla planned
     
     if (allTaken) {
-      dotColor = '#4CAF50'; // Green for all taken
+      dotColor = '#4CAF50'; // zielony dla wszystkich taken
     } else if (anyTaken) {
-      dotColor = '#FFC107'; // Yellow for some taken
+      dotColor = '#FFC107'; // żółty dla niektórych taken
     } else if (allSkipped) {
-      dotColor = '#F44336'; // Red for all skipped
+      dotColor = '#F44336'; // czerwony dla wszystkich skipped
     }
     
     processedHistory[date] = {
       marked: true,
       dotColor: dotColor,
-      medicines: dayMedicines // Keep the original data
+      medicines: dayMedicines // zachowaj oryginalne dane
     };
   });
   
   return processedHistory;
 };
 
-// Convert legacy 'taken' boolean to status format
+// Migracja starego formatu historii
 export const migrateLegacyHistory = async () => {
   try {
+    // Sprawdź czy mamy historię
     const historyJson = await AsyncStorage.getItem('medicineHistory');
     if (!historyJson) return false;
     
     const history = JSON.parse(historyJson);
-    let updated = false;
+    let needsMigration = false;
     
-    // Check each date
-    for (const date in history) {
+    // Sprawdź czy jest coś w starym formacie
+    Object.keys(history).forEach(date => {
       if (history[date] && Array.isArray(history[date])) {
-        // Check each medicine in this date
-        for (let i = 0; i < history[date].length; i++) {
-          const med = history[date][i];
-          
-          // If the record uses the old 'taken' boolean format
-          if (med.hasOwnProperty('taken') && !med.hasOwnProperty('status')) {
-            // Convert to new status format
-            med.status = med.taken ? 'taken' : 'skipped';
-            delete med.taken;
-            updated = true;
+        const records = history[date];
+        for (const record of records) {
+          // Stary format nie ma pola timestamp
+          if (record && !record.timestamp) {
+            needsMigration = true;
+            break;
           }
         }
       }
+    });
+    
+    if (!needsMigration) {
+      console.log("No legacy data found, migration not needed");
+      return false;
     }
     
-    if (updated) {
-      // Save the updated history
-      await AsyncStorage.setItem('medicineHistory', JSON.stringify(history));
-      console.log('Successfully migrated legacy history');
-    }
+    console.log("Legacy history data found, migrating...");
     
-    return updated;
+    // migracja
+    Object.keys(history).forEach(date => {
+      if (history[date] && Array.isArray(history[date])) {
+        const records = history[date];
+        
+        for (let i = 0; i < records.length; i++) {
+          const record = records[i];
+          
+          // dodaj timestamp jeśli nie ma
+          if (!record.timestamp) {
+            // stwórz timestamp z daty i czasu
+            const dateObj = new Date(date);
+            if (record.time) {
+              const [hours, minutes] = record.time.split(':');
+              dateObj.setHours(parseInt(hours), parseInt(minutes));
+            }
+            record.timestamp = dateObj.toISOString();
+          }
+          
+          // normalizuj status (starsze wersje mogły mieć inny format)
+          if (!['taken', 'skipped', 'planned'].includes(record.status)) {
+            if (record.status === 'completed' || record.status === 'done') {
+              record.status = 'taken';
+            } else if (record.status === 'missed') {
+              record.status = 'skipped';
+            } else {
+              record.status = 'planned';
+            }
+          }
+        }
+      }
+    });
+    
+    // zapisz zmigrowaną wersję
+    await AsyncStorage.setItem('medicineHistory', JSON.stringify(history));
+    console.log("Legacy history data migration complete");
+    
+    return true;
   } catch (error) {
     console.error('Error migrating legacy history:', error);
     return false;
   }
 };
 
-// Selectively remove medicine entries from history based on status
+// usuń lek z historii z opcją usunięcia tylko zaplanowanych
 export const removeFromHistory = async (medicineId: string, onlyPlanned: boolean = true) => {
   try {
     console.log(`Removing medicine ${medicineId} from history (onlyPlanned=${onlyPlanned})`);
     
-    // Get current history
+    // pobierz istniejącą historię
     const historyJson = await AsyncStorage.getItem('medicineHistory');
     if (!historyJson) return false;
     
@@ -352,32 +387,32 @@ export const removeFromHistory = async (medicineId: string, onlyPlanned: boolean
     let modified = false;
     const updatedHistory = {};
     
-    // Process each date
+    // przetwarzaj każdą datę
     for (const date in history) {
       if (history[date] && Array.isArray(history[date])) {
-        // Filter entries based on the provided criteria
+        // filtruj wpisy na podstawie podanych kryteriów
         const initialLength = history[date].length;
         const filteredMedicines = history[date].filter((med: any) => {
-          // Keep entries that don't belong to this medicine
+          // zachowaj wpisy, które nie należą do tego leku
           if (!med.id.startsWith(`${medicineId}_`)) {
             return true;
           }
           
-          // For this medicine's entries, filter based on status if onlyPlanned is true
+          // dla wpisów tego leku, filtruj na podstawie statusu jeśli onlyPlanned jest true
           if (onlyPlanned) {
             return med.status !== 'planned';
           } else {
-            // Remove all entries for this medicine
+            // usuń wszystkie wpisy dla tego leku
             return false;
           }
         });
         
-        // Check if anything was removed
+        // sprawdź czy coś zostało usunięte
         if (filteredMedicines.length < initialLength) {
           modified = true;
         }
         
-        // Only keep dates with remaining entries
+        // zachowaj tylko daty z pozostałymi wpisami
         if (filteredMedicines.length > 0) {
           updatedHistory[date] = filteredMedicines;
         }
@@ -385,7 +420,7 @@ export const removeFromHistory = async (medicineId: string, onlyPlanned: boolean
     }
     
     if (modified) {
-      // Save the updated history
+      // zapisz zaktualizowaną historię
       await AsyncStorage.setItem('medicineHistory', JSON.stringify(updatedHistory));
       
       if (onlyPlanned) {
@@ -402,7 +437,7 @@ export const removeFromHistory = async (medicineId: string, onlyPlanned: boolean
   }
 };
 
-// Update medicine references in history when a medicine is edited
+// aktualizuj referencje do leku w historii
 export const updateMedicineReferencesInHistory = async (medicineId: string, updatedMedicine: any) => {
   try {
     console.log(`Updating history references for medicine ${medicineId}`, updatedMedicine.name);
@@ -412,10 +447,10 @@ export const updateMedicineReferencesInHistory = async (medicineId: string, upda
     const history = JSON.parse(historyJson);
     let updated = false;
     
-    // For each date in history
+    // dla każdej daty w historii
     for (const date in history) {
       if (history[date] && Array.isArray(history[date])) {
-        // Find all records for this medicine
+        // znajdź wszystkie rekordy dla tego leku
         const medicineRecords = history[date].filter((record: MedicineRecord) => 
           record.id.startsWith(`${medicineId}_`)
         );
@@ -423,44 +458,44 @@ export const updateMedicineReferencesInHistory = async (medicineId: string, upda
         if (medicineRecords.length > 0) {
           console.log(`Found ${medicineRecords.length} records of medicine ${medicineId} on ${date}`);
           
-          // Handle time updates based on medicine type
+          // obsłuż aktualizacje czasu na podstawie typu leku
           if (updatedMedicine.isRegular) {
-            // For regular medicines, if times have changed we need special handling
+            // dla regularnych leków, jeśli czasy się zmieniły, potrzebujemy specjalnej obsługi
             const updatedTimes = updatedMedicine.times || [];
             
-            // Update basic info for all records
+            // aktualizuj podstawowe informacje dla wszystkich rekordów
             for (let i = 0; i < history[date].length; i++) {
               const record = history[date][i];
               if (record.id.startsWith(`${medicineId}_`)) {
-                // Update basic information
+                // aktualizuj podstawowe informacje
                 record.name = updatedMedicine.name;
                 record.dosage = updatedMedicine.dosage;
                 updated = true;
                 
-                // If there's a matching time in the updated medicine, update time too
-                // This is more complex and might require additional logic based on your app's needs
+                // jeśli jest pasujący czas w zaktualizowanym leku, zaktualizuj czas też
+                // to jest bardziej złożone i może wymagać dodatkowej logiki w zależności od potrzeb aplikacji
               }
             }
           } else {
-            // For one-time medicines, update all fields including time
+            // dla jednorazowych leków, zaktualizuj wszystkie pola włącznie z czasem
             for (let i = 0; i < history[date].length; i++) {
               const record = history[date][i];
               if (record.id.startsWith(`${medicineId}_`)) {
-                // Get the date from timestamp
+                // pobierz datę z timestamp
                 const recordDate = new Date(record.timestamp);
                 const newDate = new Date(updatedMedicine.oneTimeDate);
                 
-                // Extract hours and minutes from oneTimeTime
+                // wyciągnij godziny i minuty z oneTimeTime
                 const [hours, minutes] = updatedMedicine.oneTimeTime.split(':').map(Number);
                 
-                // Set the new time on the newDate
+                // ustaw nowy czas na newDate
                 newDate.setHours(hours, minutes, 0, 0);
                 
-                // Update the timestamp and formatted time
+                // zaktualizuj timestamp i sformatowany czas
                 record.timestamp = newDate.toISOString();
                 record.time = formatTime(newDate);
                 
-                // Update other fields
+                // zaktualizuj inne pola
                 record.name = updatedMedicine.name;
                 record.dosage = updatedMedicine.dosage;
                 
@@ -473,9 +508,9 @@ export const updateMedicineReferencesInHistory = async (medicineId: string, upda
       }
     }
     
-    // If the medicine's schedule type changed from regular to one-time or vice versa,
-    // we might need to remove old entries and add new ones
-    // This could be implemented with removeFromHistory and recordMedicineDose
+    // jeśli typ harmonogramu leku zmienił się z regularnego na jednorazowy lub odwrotnie,
+    // możemy potrzebować usunąć stare wpisy i dodać nowe
+    // to może być zaimplementowane za pomocą removeFromHistory i recordMedicineDose
     
     if (updated) {
       await AsyncStorage.setItem('medicineHistory', JSON.stringify(history));

@@ -39,7 +39,7 @@ export const getDayName = (date: Date, short: boolean = false): string => {
   return short ? SHORT_DAYS_PL[date.getDay()] : DAYS_PL[date.getDay()];
 };
 
-// Check if a date is in the future (comparing whole days)
+// sprawdza czy data w przyszłości (tylko dni)
 export const isDateInFuture = (date: Date | string): boolean => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -51,19 +51,19 @@ export const isDateInFuture = (date: Date | string): boolean => {
   return normalizedDate > today;
 };
 
-// Check if a specific datetime is in the future (comparing exact time)
+// sprawdza czy data i godzina jest w przyszłości
 export const isDateTimeInFuture = (dateTime: Date | string): boolean => {
   const now = new Date();
   const checkDateTime = typeof dateTime === 'string' ? new Date(dateTime) : dateTime;
   
-  // Log to help debugging
+  // logowanie dla debugu
   console.log(`Comparing dates - now: ${now.toISOString()}, check: ${checkDateTime.toISOString()}`);
   console.log(`Is future? ${checkDateTime > now}`);
   
   return checkDateTime > now;
 };
 
-// Debug logging for dates
+// logi do debugowania dat xd
 export const debugDate = (date: Date | string, label: string = "Date"): void => {
   try {
     const dateObj = typeof date === 'string' ? new Date(date) : date;
@@ -71,7 +71,7 @@ export const debugDate = (date: Date | string, label: string = "Date"): void => 
     console.log(`[DEBUG] Current time: ${new Date().toISOString()}`);
     console.log(`[DEBUG] Is future: ${dateObj > new Date()}`);
     
-    // Also show normalized date comparison (just the day)
+    // porównanie samego dnia (bez godzin)
     const normalizedDate = new Date(dateObj);
     normalizedDate.setHours(0, 0, 0, 0);
     
@@ -84,7 +84,7 @@ export const debugDate = (date: Date | string, label: string = "Date"): void => 
   }
 };
 
-// Parse time string into a Date object for today
+// konwersja stringa z czasem na obiekt Date dla dzisiaj
 export const parseTimeToDate = (timeString: string): Date => {
   const [hours, minutes] = timeString.split(':').map(Number);
   const date = new Date();
