@@ -1,20 +1,217 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
+import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
+import { Alert, Platform } from 'react-native';
+import { recordMedicineDose } from './src/utils/historyService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function App() {
+// Import screens
+import MedicinesListScreen from './src/screens/MedicinesListScreen';
+import MedicineDetailsScreen from './src/screens/MedicineDetailsScreen';
+import AddEditMedicineScreen from './src/screens/AddEditMedicineScreen';
+import RemindersScreen from './src/screens/RemindersScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+
+// Configure notifications
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+const Tab = createBottomTabNavigator();
+const MedicinesStack = createStackNavigator();
+
+function MedicinesStackScreen() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <MedicinesStack.Navigator>
+      <MedicinesStack.Screen name="Medicines" component={MedicinesListScreen} options={{ title: 'Lista leków' }} />
+      <MedicinesStack.Screen name="MedicineDetails" component={MedicineDetailsScreen} options={{ title: 'Szczegóły leku' }} />
+      <MedicinesStack.Screen 
+        name="AddEditMedicine" 
+        component={AddEditMedicineScreen} 
+        options={({ route }) => ({ 
+          title: route.params?.medicine ? 'Edytuj lek' : 'Dodaj nowy lek' 
+        })} 
+      />
+    </MedicinesStack.Navigator>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+export default function App() {
+  const [notification, setNotification] = useState(false);
+  const notificationListener = useRef();
+  const responseListener = useRef();
+  
+  useEffect(() => {
+    // Request notification permissions on app start
+    registerForPushNotificationsAsync();
+    
+    // This listener is triggered when a notification is received while the app is in the foreground
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      setNotification(notification);
+      
+      // Show a dialog when notification is received in foreground
+      const medicineId = notification.request.content.data?.medicineId;
+      const medicineName = notification.request.content.data?.medicineName;
+      const medicineDosage = notification.request.content.data?.medicineDosage;
+      
+      if (medicineId) {
+        showMedicineTakenDialog(medicineId, medicineName || 'Lek', medicineDosage || '');
+      }
+    });
+
+    // This listener is triggered when a user taps on a notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      const medicineId = response.notification.request.content.data?.medicineId;
+      const medicineName = response.notification.request.content.data?.medicineName;
+      const medicineDosage = response.notification.request.content.data?.medicineDosage;
+      
+      if (medicineId) {
+        showMedicineTakenDialog(medicineId, medicineName || 'Lek', medicineDosage || '');
+      }
+    });
+
+    return () => {
+      Notifications.removeNotificationSubscription(notificationListener.current);
+      Notifications.removeNotificationSubscription(responseListener.current);
+    };
+  }, []);
+
+  // Show dialog to mark medicine as taken
+  const showMedicineTakenDialog = (medicineId: string, medicineName: string, medicineDosage: string) => {
+    Alert.alert(
+      'Przypomnienie o leku',
+      `Czy zażyłeś lek ${medicineName} (${medicineDosage})?`,
+      [
+        {
+          text: 'Pominięty',
+          onPress: () => updateMedicineStatus(medicineId, medicineName, medicineDosage, 'skipped'),
+          style: 'destructive'
+        },
+        {
+          text: 'Zażyty',
+          onPress: () => updateMedicineStatus(medicineId, medicineName, medicineDosage, 'taken'),
+          style: 'default'
+        }
+      ],
+      { cancelable: false }
+    );
+  };
+  
+  // Update medicine status in history
+  const updateMedicineStatus = async (medicineId: string, name: string, dosage: string, status: 'taken' | 'skipped') => {
+    try {
+      // First get the medicine details
+      const medicinesJson = await AsyncStorage.getItem('medicines');
+      if (medicinesJson) {
+        const medicines = JSON.parse(medicinesJson);
+        const medicine = medicines.find(m => m.id === medicineId);
+        
+        if (medicine) {
+          // Update in history
+          await recordMedicineDose(medicine, status, new Date());
+        } else {
+          // Create temporary medicine object if not found
+          const tempMedicine = {
+            id: medicineId,
+            name: name,
+            dosage: dosage
+          };
+          await recordMedicineDose(tempMedicine, status, new Date());
+        }
+        
+        if (status === 'taken') {
+          Alert.alert('Świetnie!', 'Lek został oznaczony jako zażyty.');
+        } else {
+          Alert.alert('Rozumiem', 'Lek został oznaczony jako pominięty.');
+        }
+      }
+    } catch (error) {
+      console.error('Error updating medicine status:', error);
+    }
+  };
+
+  async function registerForPushNotificationsAsync() {
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      
+      // Only ask if permissions have not already been determined
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      
+      if (finalStatus !== 'granted') {
+        Alert.alert(
+          'Uwaga', 
+          'Aby otrzymywać przypomnienia o lekach, włącz powiadomienia dla aplikacji w ustawieniach urządzenia.'
+        );
+        return;
+      }
+    } catch (error) {
+      console.log('Error requesting notification permissions:', error);
+    }
+  }
+
+  return (
+    <NavigationContainer>
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName;
+
+            switch (route.name) {
+              case 'MedicinesTab':
+                iconName = focused ? 'medical' : 'medical-outline';
+                break;
+              case 'Reminders':
+                iconName = focused ? 'notifications' : 'notifications-outline';
+                break;
+              case 'History':
+                iconName = focused ? 'calendar' : 'calendar-outline';
+                break;
+              case 'Settings':
+                iconName = focused ? 'settings' : 'settings-outline';
+                break;
+              default:
+                iconName = 'help';
+            }
+
+            return <Ionicons name={iconName} size={size} color={color} />;
+          },
+        })}
+      >
+        <Tab.Screen 
+          name="MedicinesTab" 
+          component={MedicinesStackScreen} 
+          options={{ headerShown: false, tabBarLabel: 'Leki' }}
+        />
+        <Tab.Screen 
+          name="Reminders" 
+          component={RemindersScreen} 
+          options={{ title: 'Przypomnienia' }}
+        />
+        <Tab.Screen 
+          name="History" 
+          component={HistoryScreen} 
+          options={{ title: 'Historia' }}
+        />
+        <Tab.Screen 
+          name="Settings" 
+          component={SettingsScreen} 
+          options={{ title: 'Ustawienia' }}
+        />
+      </Tab.Navigator>
+      <StatusBar style="auto" />
+    </NavigationContainer>
+  );
+}
