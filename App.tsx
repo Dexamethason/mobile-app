@@ -118,6 +118,39 @@ export default function App() {
         if (medicine) {
           // Update in history
           await recordMedicineDose(medicine, status, new Date());
+          
+          // Jeśli lek został zażyty
+          if (status === 'taken') {
+            let needsUpdate = false;
+            
+            // Dla leków jednorazowych, oznacz jako ukończone
+            if (!medicine.isRegular) {
+              medicine.completed = true;
+              needsUpdate = true;
+            }
+            // Dla regularnych, zmniejsz ilość tabletek
+            else if (medicine.quantity !== undefined && medicine.quantity > 0) {
+              medicine.quantity -= 1;
+              needsUpdate = true;
+              
+              // Sprawdź czy ilość jest mała
+              if (medicine.quantity < 5) {
+                Alert.alert(
+                  'Lek się kończy!',
+                  `Zostało tylko ${medicine.quantity} ${
+                    medicine.quantity === 1 ? 'tabletka' : 
+                    (medicine.quantity > 1 && medicine.quantity < 5) ? 'tabletki' : 'tabletek'
+                  } leku ${medicine.name}.`,
+                  [{ text: 'OK' }]
+                );
+              }
+            }
+            
+            // Zapisz zaktualizowane dane
+            if (needsUpdate) {
+              await AsyncStorage.setItem('medicines', JSON.stringify(medicines));
+            }
+          }
         } else {
           // Create temporary medicine object if not found
           const tempMedicine = {

@@ -16,27 +16,64 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateMedicineNotification } from '../utils/notifications';
 import { recordMedicineDose, updateMedicineReferencesInHistory, removeFromHistory } from '../utils/historyService';
 
-const AddEditMedicineScreen = ({ route, navigation }) => {
+// Dodajemy interfejsy dla lepszego typowania
+interface Medicine {
+  id: string;
+  name: string;
+  dosage: string;
+  quantity?: number;
+  notes?: string;
+  isRegular: boolean;
+  times?: string[];
+  selectedDays?: boolean[];
+  oneTimeDate?: string;
+  oneTimeTime?: string;
+  schedule?: string;
+  completed?: boolean;
+  history?: any[];
+}
+
+interface TimeObject {
+  time: string;
+  enabled: boolean;
+}
+
+interface RouteParams {
+  medicine?: Medicine;
+  refresh?: boolean;
+}
+
+interface NavigationProps {
+  navigate: (screen: string, params?: any) => void;
+  goBack: () => void;
+}
+
+interface AddEditMedicineScreenProps {
+  route: { params?: RouteParams };
+  navigation: NavigationProps;
+}
+
+const AddEditMedicineScreen: React.FC<AddEditMedicineScreenProps> = ({ route, navigation }) => {
   const editingMedicine = route.params?.medicine;
   const isEditing = !!editingMedicine;
 
   // podstawowe info o leku
   const [name, setName] = useState(isEditing ? editingMedicine.name : '');
   const [dosage, setDosage] = useState(isEditing ? editingMedicine.dosage : '');
-  const [quantity, setQuantity] = useState(isEditing ? editingMedicine.quantity?.toString() || '30' : '');
-  const [notes, setNotes] = useState(isEditing ? editingMedicine.notes : '');
+  const [quantity, setQuantity] = useState(isEditing ? editingMedicine.quantity?.toString() || '30' : '30');
+  const [notes, setNotes] = useState(isEditing ? editingMedicine.notes || '' : '');
   
   // Typ harmonogramu
   const [isRegular, setIsRegular] = useState(isEditing ? editingMedicine.isRegular !== false : true);
   
   // dla regularnego harmonogramu
-  const [times, setTimes] = useState(isEditing && editingMedicine.times ? 
+  const [times, setTimes] = useState<TimeObject[]>(isEditing && editingMedicine.times ? 
     editingMedicine.times.map(time => ({ time, enabled: true })) : 
     [{ time: '08:00', enabled: true }]
   );
   
   // dni tygodnia dla reg leków (domyślnie wszystkie dni)
-  const [selectedDays, setSelectedDays] = useState(isEditing && editingMedicine.selectedDays ? 
+  const [selectedDays, setSelectedDays] = useState<boolean[]>(isEditing && editingMedicine.selectedDays ? 
     editingMedicine.selectedDays : 
     [true, true, true, true, true, true, true]
   );
@@ -74,14 +111,14 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
   };
 
   // usuwanie czasu
-  const handleRemoveTime = (index) => {
+  const handleRemoveTime = (index: number) => {
     const newTimes = [...times];
     newTimes.splice(index, 1);
     setTimes(newTimes);
   };
 
   // pokazanie modala z wyborem godziny
-  const showTimePickerForIndex = (index, isOneTime = false) => {
+  const showTimePickerForIndex = (index: number, isOneTime = false) => {
     if (isOneTime) {
       const [hours, minutes] = oneTimeTime.split(':');
       setTempHours(hours);
@@ -110,13 +147,13 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
     setShowTimePickerModal(false);
   };
 
-  const toggleTimeEnabled = (index) => {
+  const toggleTimeEnabled = (index: number) => {
     const newTimes = [...times];
     newTimes[index] = { ...newTimes[index], enabled: !newTimes[index].enabled };
     setTimes(newTimes);
   };
 
-  const toggleDay = (index) => {
+  const toggleDay = (index: number) => {
     const newSelectedDays = [...selectedDays];
     newSelectedDays[index] = !newSelectedDays[index];
     setSelectedDays(newSelectedDays);
@@ -144,7 +181,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
     setTempDate(prevDay);
   };
 
-  const formatDate = (date) => {
+  const formatDate = (date: Date) => {
     return date.toLocaleDateString('pl-PL', { 
       year: 'numeric', 
       month: 'long', 
@@ -169,7 +206,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
       `Jednorazowo: ${formatDate(oneTimeDate)}`;
 
     // obiekt z danymi leku
-    const medicineData = {
+    const medicineData: Medicine = {
       id: isEditing ? editingMedicine.id : Date.now().toString(),
       name,
       dosage,
@@ -189,7 +226,6 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
       // aktualizujemy powiadomienie
       await updateMedicineNotification(medicineData);
       
-
       let scheduleChanged = false;
       
       if (isEditing) {
@@ -267,7 +303,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
         
         if (isEditing) {
           // update istniejącego leku
-          updatedMedicines = storedMedicines.map(med => 
+          updatedMedicines = storedMedicines.map((med: Medicine) => 
             med.id === medicineData.id ? medicineData : med
           );
         } else {

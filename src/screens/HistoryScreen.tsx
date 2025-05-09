@@ -129,13 +129,13 @@ const HistoryScreen: React.FC<Props> = ({ navigation }) => {
           // wybierz kolor kropki na podstawie statusów leków
           let dotColor;
           if (allTaken) {
-            dotColor = '#4CAF50'; // zielony jak wszystkie wzięte
+            dotColor = '#4CAF50';
           } else if (anyTaken) {
-            dotColor = '#FFC107'; // żółty jak niektóre wzięte
+            dotColor = '#FFC107';
           } else if (allSkipped) {
-            dotColor = '#F44336'; // czerwony jak wszystkie pominięte
+            dotColor = '#F44336';
           } else {
-            dotColor = '#FFC107'; // żółty dla zaplanowanych
+            dotColor = '#FFC107';
           }
 
           formattedHistory[date] = {

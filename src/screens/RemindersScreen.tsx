@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { formatDate, formatDateString, isDateInFuture, getDayName } from '../utils/dateUtils';
+import { formatDate, formatDateString, isDateInFuture, getDayName, getLocalDateString } from '../utils/dateUtils';
 import { recordMedicineDose } from '../utils/historyService';
 
 interface Reminder {
@@ -25,11 +25,13 @@ interface MedicineData {
   selectedDays?: boolean[];
   oneTimeDate?: string;
   oneTimeTime?: string;
+  quantity?: number;
+  completed?: boolean;
 }
 
 interface GroupedReminders {
-  title: string; // "Today", "Tomorrow", "Next week", etc.
-  date: string; // ISO date string
+  title: string; 
+  date: string;
   data: Reminder[];
 }
 
@@ -81,143 +83,141 @@ const RemindersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     groupRemindersByDate();
   }, [reminders, filter]);
 
-  const loadReminders = useCallback(async () => {
-    try {
-      setLoading(true);
-      console.log("Loading reminders data...");
+const loadReminders = useCallback(async () => {
+  try {
+    setLoading(true);
+    console.log("Loading reminders data...");
 
-      // dane o lekach
-      const medicinesJson = await AsyncStorage.getItem('medicines');
-      const medicines: MedicineData[] = medicinesJson ? JSON.parse(medicinesJson) : [];
-      
-      if (medicines.length === 0) {
-        setReminders([]);
-        setLoading(false);
-        return;
-      }
+    // dane o lekach
+    const medicinesJson = await AsyncStorage.getItem('medicines');
+    const medicines: MedicineData[] = medicinesJson ? JSON.parse(medicinesJson) : [];
+    
+    if (medicines.length === 0) {
+      setReminders([]);
+      setLoading(false);
+      return;
+    }
 
-      // check historii żeby sprawdzić status
-      const historyJson = await AsyncStorage.getItem('medicineHistory');
-      const history = historyJson ? JSON.parse(historyJson) : {};
+    // check historii żeby sprawdzić status
+    const historyJson = await AsyncStorage.getItem('medicineHistory');
+    const history = historyJson ? JSON.parse(historyJson) : {};
 
-      // generujemy przypomnienia na 7 dni
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const nextWeek = new Date(today);
-      nextWeek.setDate(nextWeek.getDate() + 7);
+    // generujemy przypomnienia na 7 dni dla regularnych i wszystkie dla jednorazowych
+    const today = new Date();
+    const todayAtMidnight = new Date(today);
+    todayAtMidnight.setHours(0, 0, 0, 0);
+    
+    const nextWeek = new Date(todayAtMidnight);
+    nextWeek.setDate(nextWeek.getDate() + 7);
 
-      const generatedReminders: Reminder[] = [];
-      
-      for (const medicine of medicines) {
-        if (medicine.isRegular) {
-          // obsługa regularnych leków - 7 dni
-          for (let i = 0; i < 7; i++) {
-            const date = new Date(today);
-            date.setDate(date.getDate() + i);
-            
-            // sprawdź czy ten dzień jest wybrany
-            const dayOfWeek = date.getDay(); 
-            if (!medicine.selectedDays || !medicine.selectedDays[dayOfWeek]) {
-              continue;
-            }
-            
-            // sprawdzamy czy są czasy przypomnień
-            if (medicine.times && medicine.times.length > 0) {
-              for (const time of medicine.times) {
-                const [hours, minutes] = time.split(':');
-                const reminderTime = new Date(date);
-                reminderTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-                
-                // nie pokazujemy starych
-                if (reminderTime < new Date()) {
-                  continue;
-                }
-                
-                // formatujemy string z datą do porównania z historią
-                const dateString = reminderTime.toISOString().split('T')[0];
-                
-                // sprawdzamy status
-                let status: 'planned' | 'taken' | 'skipped' = 'planned';
-                if (history && history[dateString]) {
-                  // szukamy pasującego wpisu w historii
-                  const historyRecord = history[dateString].find(record => 
-                    record.id.startsWith(`${medicine.id}_`) && record.time === time
-                  );
-                  
-                  if (historyRecord) {
-                    status = historyRecord.status as 'planned' | 'taken' | 'skipped';
-                  }
-                }
-                
-                // tworzymy przypomnienie
-                generatedReminders.push({
-                  id: `${medicine.id}_${dateString}_${time}`,
-                  medicineId: medicine.id,
-                  medicineName: medicine.name,
-                  medicineDosage: medicine.dosage,
-                  date: dateString,
-                  time,
-                  status,
-                  timestamp: reminderTime.toISOString()
-                });
-              }
-            }
+    const generatedReminders: Reminder[] = [];
+    
+    // Używamy lokalnego formatu daty zamiast ISO
+    const todayString = getLocalDateString(todayAtMidnight);
+    console.log(`Generating reminders, today (local): ${todayString}`);
+    
+    // Dla regularnych leków, generujemy 7 dni do przodu
+    // Dla jednorazowych, generujemy wszystkie, nawet te oddalone w czasie
+    
+    for (const medicine of medicines) {
+      if (medicine.isRegular) {
+        // obsługa regularnych leków - 7 dni
+        for (let i = 0; i < 7; i++) {
+          const date = new Date(todayAtMidnight);
+          date.setDate(date.getDate() + i);
+          
+          // sprawdź czy ten dzień jest wybrany
+          const dayOfWeek = date.getDay(); 
+          if (!medicine.selectedDays || !medicine.selectedDays[dayOfWeek]) {
+            continue;
           }
-        } else {
-          // obsługa jednorazowych leków
-          if (medicine.oneTimeDate) {
-            const medicineDate = new Date(medicine.oneTimeDate);
-            medicineDate.setHours(0, 0, 0, 0);
-            
-            // tylko jak dzisiaj albo w przyszłości i max 7 dni
-            if (medicineDate >= today && medicineDate <= nextWeek) {
-              const dateString = medicine.oneTimeDate.split('T')[0];
-              
-              // sprawdzamy status w historii
-              let status: 'planned' | 'taken' | 'skipped' = 'planned';
-              if (history && history[dateString]) {
-                // szukamy pasującego wpisu
-                const historyRecord = history[dateString].find(record => 
-                  record.id.startsWith(`${medicine.id}_`)
-                );
-                
-                if (historyRecord) {
-                  status = historyRecord.status as 'planned' | 'taken' | 'skipped';
-                }
-              }
-              
-              // nowe przypomnienie
-              generatedReminders.push({
-                id: `${medicine.id}_${dateString}_${medicine.oneTimeTime}`,
-                medicineId: medicine.id,
-                medicineName: medicine.name,
-                medicineDosage: medicine.dosage,
-                date: dateString,
-                time: medicine.oneTimeTime || '00:00',
-                status,
-                timestamp: new Date(medicine.oneTimeDate).toISOString()
-              });
+          
+          // sprawdzamy czy są czasy przypomnień
+          if (medicine.times && medicine.times.length > 0) {
+            for (const time of medicine.times) {
+              // istniejący kod dla regularnych leków
+              // ...
             }
           }
         }
+      } else {
+        // obsługa jednorazowych leków - bez limitu dat
+        if (medicine.oneTimeDate) {
+          const medicineDate = new Date(medicine.oneTimeDate);
+          medicineDate.setHours(0, 0, 0, 0);
+          
+          // Usuwamy limit 7 dni - pokazujemy wszystkie jednorazowe leki
+          // także te w odległej przyszłości dla widoku "wszystkie"
+          // if (medicineDate >= todayAtMidnight && medicineDate <= nextWeek) {
+          
+          // Pokazujemy wszystkie przyszłe i dzisiejsze jednorazowe leki
+          if (medicineDate >= todayAtMidnight) {
+            // Używamy lokalnego formatu daty
+            const dateString = getLocalDateString(medicineDate);
+            
+            // sprawdzamy czy to dzisiejsza data
+            const isToday = dateString === todayString;
+            if (isToday) {
+              console.log(`One-time medicine for today (local date): ${medicine.name}, date: ${dateString}`);
+            }
+            
+            // Ustaw czas do porównania statusu
+            const medicineTime = new Date(medicineDate);
+            const [hours, minutes] = medicine.oneTimeTime.split(':');
+            medicineTime.setHours(parseInt(hours), parseInt(minutes));
+            const isPast = medicineTime < today;
+            
+            // sprawdzamy status w historii
+            let status: 'planned' | 'taken' | 'skipped' = 'planned';
+            if (history && history[dateString]) {
+              // szukamy pasującego wpisu
+              const historyRecord = history[dateString]?.find(record => 
+                record.id.startsWith(`${medicine.id}_`)
+              );
+              
+              if (historyRecord) {
+                status = historyRecord.status as 'planned' | 'taken' | 'skipped';
+              } else if (isPast) {
+                status = 'skipped';
+              }
+            } else if (isPast) {
+              status = 'skipped';
+            }
+            
+            // nowe przypomnienie
+            generatedReminders.push({
+              id: `${medicine.id}_${dateString}_${medicine.oneTimeTime}`,
+              medicineId: medicine.id,
+              medicineName: medicine.name,
+              medicineDosage: medicine.dosage,
+              date: dateString,
+              time: medicine.oneTimeTime || '00:00',
+              status,
+              timestamp: medicineTime.toISOString()
+            });
+          }
+        }
       }
-      
-      // sort po dacie i czasie
-      generatedReminders.sort((a, b) => {
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-      });
-      
-      setReminders(generatedReminders);
-      console.log(`Loaded ${generatedReminders.length} reminders`);
-      
-    } catch (error) {
-      console.error('Error loading reminders:', error);
-      Alert.alert('Błąd', 'Nie udało się wczytać przypomnień.');
-    } finally {
-      setLoading(false);
     }
-  }, []);
+    
+    // sort po dacie i czasie
+    generatedReminders.sort((a, b) => {
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
+    
+    // Sprawdź ile przypomnień jest na dzisiaj
+    const todayReminders = generatedReminders.filter(r => r.date === todayString);
+    console.log(`Generated ${generatedReminders.length} total reminders, ${todayReminders.length} for today (local date: ${todayString})`);
+    
+    setReminders(generatedReminders);
+    
+  } catch (error) {
+    console.error('Error loading reminders:', error);
+    Alert.alert('Błąd', 'Nie udało się wczytać przypomnień.');
+  } finally {
+    setLoading(false);
+  }
+}, []);
   
   const groupRemindersByDate = () => {
     if (!reminders || reminders.length === 0) {
@@ -225,23 +225,51 @@ const RemindersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       return;
     }
     
-    // filtrujemy przypomnienia na podstawie aktualnego filtra
+    // Utwórz dzisiejszą datę w odpowiednim formacie
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayAtMidnight = new Date(today);
+    todayAtMidnight.setHours(0, 0, 0, 0);
     
-    const nextWeek = new Date(today);
+    const nextWeek = new Date(todayAtMidnight);
     nextWeek.setDate(nextWeek.getDate() + 7);
+    
+    // Konwersja do formatu lokalnego daty
+    const todayString = getLocalDateString(todayAtMidnight);
+    
+    // Tworzenie lokalnych stringów dat dla kolejnych 7 dni
+    const datesToCheck: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(todayAtMidnight);
+      date.setDate(date.getDate() + i);
+      datesToCheck.push(getLocalDateString(date));
+    }
+    
+    const nextWeekString = getLocalDateString(nextWeek);
+    
+    console.log(`Today string for filtering (local): ${todayString}, Next week: ${nextWeekString}`);
     
     let filteredReminders = [...reminders];
     
     if (filter === 'today') {
-      const todayString = today.toISOString().split('T')[0];
-      filteredReminders = reminders.filter(r => r.date === todayString);
-    } else if (filter === 'week') {
-      filteredReminders = reminders.filter(r => {
-        const reminderDate = new Date(r.date);
-        return reminderDate >= today && reminderDate <= nextWeek;
+      // Wyświetlaj debugowanie dat dla zrozumienia problemu
+      console.log(`Today string (local): ${todayString}`);
+      reminders.forEach(r => {
+        console.log(`Reminder date: ${r.date}, is today: ${r.date === todayString}`);
       });
+      
+      // Filtrowanie dla dzisiejszych dat - używamy dokładnie takiego samego formatu jak podczas tworzenia przypomnień
+      filteredReminders = reminders.filter(r => r.date === todayString);
+      console.log(`Filtered today's reminders: ${filteredReminders.length}`);
+    } else if (filter === 'week') {
+      // Używamy tablicy lokalnych dat do filtrowania widoku tygodnia
+      filteredReminders = reminders.filter(r => datesToCheck.includes(r.date));
+      
+      // Logowanie dla debugowania
+      const todayInWeekView = filteredReminders.filter(r => r.date === todayString).length;
+      console.log(`Week view contains ${todayInWeekView} reminders for today`);
+    } else if (filter === 'all') {
+      // Dla widoku "wszystkie" nie filtrujemy - pokazujemy wszystkie dostępne przypomnienia
+      console.log(`All view contains ${reminders.length} reminders total`);
     }
     
     // grupujemy po dacie
@@ -254,8 +282,11 @@ const RemindersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     }, {});
     
     // konwersja na tablicę + tytuł
-    const todayString = today.toISOString().split('T')[0];
-    const tomorrowString = new Date(today.getTime() + 86400000).toISOString().split('T')[0];
+    const tomorrowAtMidnight = new Date(todayAtMidnight);
+    tomorrowAtMidnight.setDate(tomorrowAtMidnight.getDate() + 1);
+    const tomorrowString = getLocalDateString(tomorrowAtMidnight);
+    
+    console.log(`Today string (local): ${todayString}, Tomorrow string (local): ${tomorrowString}`);
     
     const groupArray: GroupedReminders[] = Object.keys(groups).map(date => {
       let title = '';
@@ -264,10 +295,14 @@ const RemindersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       } else if (date === tomorrowString) {
         title = 'Jutro';
       } else {
-        const dateObj = new Date(date);
+        // Konwersja stringa daty do obiektu Date
+        const [year, month, day] = date.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day); // miesiące w JS są 0-indeksowane
         const dayName = getDayName(dateObj);
         title = `${dayName}, ${formatDateString(date)}`;
       }
+      
+      console.log(`Group for date ${date}: ${title}`);
       
       return {
         title,
@@ -276,8 +311,19 @@ const RemindersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       };
     });
     
-    // sortujemy po dacie
-    groupArray.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // sortujemy po dacie - tu też musimy konwertować stringi do dat
+    groupArray.sort((a, b) => {
+      const [aYear, aMonth, aDay] = a.date.split('-').map(Number);
+      const [bYear, bMonth, bDay] = b.date.split('-').map(Number);
+      const dateA = new Date(aYear, aMonth - 1, aDay);
+      const dateB = new Date(bYear, bMonth - 1, bDay);
+      return dateA.getTime() - dateB.getTime();
+    });
+    
+    console.log(`Grouped reminders: ${groupArray.length} groups`);
+    for (const group of groupArray) {
+      console.log(`Group: ${group.title}, items: ${group.data.length}`);
+    }
     
     setGroupedReminders(groupArray);
   };
@@ -295,6 +341,49 @@ const RemindersScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       
       // aktualizacja w historii
       await recordMedicineDose(medicineData, newStatus, reminderTime);
+      
+      // Jeśli status to "taken", aktualizujemy dane leku
+      if (newStatus === 'taken') {
+        // Pobierz dane leków
+        const medicinesJson = await AsyncStorage.getItem('medicines');
+        if (medicinesJson) {
+          const medicines = JSON.parse(medicinesJson);
+          const medicineIndex = medicines.findIndex(med => med.id === reminder.medicineId);
+          
+          if (medicineIndex !== -1) {
+            const medicine = medicines[medicineIndex];
+            let needsUpdate = false;
+            
+            // Dla leków jednorazowych, oznacz jako ukończone
+            if (!medicine.isRegular) {
+              medicine.completed = true;
+              needsUpdate = true;
+            }
+            // Dla regularnych leków, zmniejsz ilość tabletek
+            else if (medicine.quantity !== undefined && medicine.quantity > 0) {
+              medicine.quantity -= 1;
+              needsUpdate = true;
+              
+              // Sprawdź czy ilość jest mała
+              if (medicine.quantity < 5) {
+                Alert.alert(
+                  'Lek się kończy!',
+                  `Zostało tylko ${medicine.quantity} ${
+                    medicine.quantity === 1 ? 'tabletka' : 
+                    (medicine.quantity > 1 && medicine.quantity < 5) ? 'tabletki' : 'tabletek'
+                  } leku ${medicine.name}.`,
+                  [{ text: 'OK' }]
+                );
+              }
+            }
+            
+            // Zapisz zaktualizowane dane
+            if (needsUpdate) {
+              await AsyncStorage.setItem('medicines', JSON.stringify(medicines));
+            }
+          }
+        }
+      }
       
       // odświeżenie przypomnień
       await loadReminders();

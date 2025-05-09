@@ -6,62 +6,125 @@ import { removeMedicineFromHistory, completelyRemoveMedicine } from '../utils/hi
 import { cancelMedicineNotification } from '../utils/notifications';
 import { removeFromHistory } from '../utils/historyService';
 
+// Rozszerzony interfejs MedicineData
+interface MedicineData {
+  id: string;
+  name: string;
+  dosage: string;
+  isRegular: boolean;
+  times?: string[];
+  selectedDays?: boolean[];
+  oneTimeDate?: string;
+  oneTimeTime?: string;
+  quantity?: number;
+  completed?: boolean; // nowe pole do oznaczania ukończonych leków jednorazowych
+}
+
 const MedicinesListScreen = ({ navigation, route }) => {
   const [searchText, setSearchText] = useState('');
-  const [medicines, setMedicines] = useState([]);
+  const [medicines, setMedicines] = useState<MedicineData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortOption, setSortOption] = useState<'name' | 'date'>('date');
+  const [showCompleted, setShowCompleted] = useState(false);
 
-  // ładowanie leków z pamięci i dodanie lepszej funkcji czyszczenia
   useEffect(() => {
     loadMedicines();
-    
-    // focus listener do odświeżania jak ekran będzie widoczny
     const unsubscribe = navigation.addListener('focus', () => {
       console.log('MedicinesListScreen focused - refreshing data');
       loadMedicines();
     });
-    
     return unsubscribe;
   }, [navigation]);
 
-  // obsługa aktualizacji danych po edycji
   useEffect(() => {
     if (route.params?.updatedMedicine) {
       const updatedMedicine = route.params.updatedMedicine;
-      
       setMedicines(currentMedicines => {
         const medicineIndex = currentMedicines.findIndex(med => med.id === updatedMedicine.id);
-        
         if (medicineIndex !== -1) {
-          // aktualizacja istniejącego leku
           const newMedicines = [...currentMedicines];
           newMedicines[medicineIndex] = updatedMedicine;
           saveMedicines(newMedicines);
-          return newMedicines;
+          return sortMedicines(newMedicines, sortOption);
         } else {
-          // nowy lek do dodania
           const newMedicines = [...currentMedicines, updatedMedicine];
           saveMedicines(newMedicines);
-          return newMedicines;
+          return sortMedicines(newMedicines, sortOption);
         }
       });
-      
-      // czyszczymy parametr żeby nie przetwarzać znowu
       navigation.setParams({ updatedMedicine: null });
     }
   }, [route.params?.updatedMedicine]);
 
-  // lepsza funkcja do ładowania leków która czyści też usunięte rzeczy
+  const sortMedicines = (medicinesList: MedicineData[], option: 'name' | 'date'): MedicineData[] => {
+    return [...medicinesList].sort((a, b) => {
+      if ((a.completed && !b.completed) || (!a.isRegular && a.completed && b.isRegular)) {
+        return 1;
+      }
+      if ((b.completed && !a.completed) || (!b.isRegular && b.completed && a.isRegular)) {
+        return -1;
+      }
+      if (option === 'name') {
+        return a.name.localeCompare(b.name);
+      } else {
+        if (!a.isRegular && !b.isRegular) {
+          const dateA = new Date(a.oneTimeDate);
+          const dateB = new Date(b.oneTimeDate);
+          return dateA.getTime() - dateB.getTime();
+        } else if (!a.isRegular && !a.completed) {
+          return -1;
+        } else if (!b.isRegular && !b.completed) {
+          return 1;
+        } else {
+          return a.name.localeCompare(b.name);
+        }
+      }
+    });
+  };
+
+  const checkOneTimeMedicines = async (medicinesList: MedicineData[]): Promise<MedicineData[]> => {
+    try {
+      const historyJson = await AsyncStorage.getItem('medicineHistory');
+      if (!historyJson) return medicinesList;
+      const history = JSON.parse(historyJson);
+      let updated = false;
+      const updatedMedicines = medicinesList.map(medicine => {
+        if (!medicine.isRegular && !medicine.completed) {
+          const oneTimeDate = new Date(medicine.oneTimeDate);
+          const dateString = oneTimeDate.toISOString().split('T')[0];
+          if (history[dateString]) {
+            const record = history[dateString].find(
+              entry => entry.id.startsWith(`${medicine.id}_`) && entry.status === 'taken'
+            );
+            if (record) {
+              updated = true;
+              return { ...medicine, completed: true };
+            }
+          }
+        }
+        return medicine;
+      });
+      if (updated) {
+        await AsyncStorage.setItem('medicines', JSON.stringify(updatedMedicines));
+      }
+      return updatedMedicines;
+    } catch (error) {
+      console.error('Error checking one-time medicines status:', error);
+      return medicinesList;
+    }
+  };
+
   const loadMedicines = useCallback(async () => {
     try {
       setLoading(true);
       console.log('Loading medicines data...');
-      
       const storedMedicines = await AsyncStorage.getItem('medicines');
       if (storedMedicines) {
-        const parsedMedicines = JSON.parse(storedMedicines);
-        setMedicines(parsedMedicines);
-        console.log(`Loaded ${parsedMedicines.length} medicines`);
+        let parsedMedicines = JSON.parse(storedMedicines);
+        parsedMedicines = await checkOneTimeMedicines(parsedMedicines);
+        const sortedMedicines = sortMedicines(parsedMedicines, sortOption);
+        setMedicines(sortedMedicines);
+        console.log(`Loaded and sorted ${sortedMedicines.length} medicines`);
       } else {
         setMedicines([]);
         console.log('No medicines found in storage');
@@ -72,9 +135,8 @@ const MedicinesListScreen = ({ navigation, route }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sortOption]);
 
-  // zapis leków do AsyncStorage
   const saveMedicines = async (medicinesData) => {
     try {
       await AsyncStorage.setItem('medicines', JSON.stringify(medicinesData));
@@ -84,90 +146,27 @@ const MedicinesListScreen = ({ navigation, route }) => {
     }
   };
 
-  // obsługa zapisu leku z AddEditMedicineScreen
-  const handleSaveMedicine = (medicine) => {
-    navigation.setParams({ updatedMedicine: medicine });
+  const toggleSortOption = () => {
+    const newOption = sortOption === 'name' ? 'date' : 'name';
+    setSortOption(newOption);
+    setMedicines(currentMedicines => sortMedicines(currentMedicines, newOption));
   };
 
-  // funkcja do wymuszenia odświeżenia danych w innych ekranach po usunięciu
-  const notifyMedicineDeleted = async (id) => {
-    // to moglby być lepsze z Reduxem albo Context API xd
-    try {
-      // zapis flagi w AsyncStorage ktorą inne ekrany mogą sprawdzać
-      await AsyncStorage.setItem('lastDeletedMedicine', JSON.stringify({
-        id,
-        timestamp: Date.now()
-      }));
-    } catch (error) {
-      console.error('Error setting deletion notification:', error);
+  const toggleCompletedView = () => {
+    setShowCompleted(!showCompleted);
+  };
+
+  const filterMedicinesByCompletion = (medicinesList: MedicineData[]) => {
+    if (showCompleted) {
+      return medicinesList.filter(med => med.completed);
+    } else {
+      return medicinesList.filter(med => !med.completed);
     }
   };
 
-  // lepsza funkcja usuwania co usuwa tylko planowane wpisy
-  const deleteMedicine = (id) => {
-    Alert.alert(
-      'Usuń lek',
-      'Czy na pewno chcesz usunąć ten lek? Wszystkie zaplanowane dawki zostaną usunięte.',
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        { 
-          text: 'Usuń', 
-          onPress: async () => {
-            try {
-              setLoading(true); // pokaż ładowanie żeby nie klikali 2x
-              
-              console.log(`Starting deletion process for medicine: ${id}`);
-              
-              // anulujemy powiadomienia
-              await cancelMedicineNotification(id);
-              
-              // usuwamy tylko zaplanowane wpisy z historii
-              await removeFromHistory(id, true);
-              
-              // usuwamy z listy leków w pamięci
-              const storedMedicinesJson = await AsyncStorage.getItem('medicines');
-              if (storedMedicinesJson) {
-                const storedMedicines = JSON.parse(storedMedicinesJson);
-                const updatedMedicines = storedMedicines.filter(med => med.id !== id);
-                await AsyncStorage.setItem('medicines', JSON.stringify(updatedMedicines));
-              }
-              
-              // aktualizacja lokalnego stanu od razu
-              setMedicines(prevMedicines => {
-                const updatedMedicines = prevMedicines.filter(med => med.id !== id);
-                console.log(`Updated medicines list now contains ${updatedMedicines.length} items`);
-                return updatedMedicines;
-              });
-              
-              // daj znać innym ekranom o usunięciu
-              await AsyncStorage.setItem('lastDeletedMedicine', JSON.stringify({
-                id,
-                timestamp: Date.now(),
-                onlyPlanned: true
-              }));
-              
-              console.log(`Medicine ${id} successfully deleted`);
-              
-              // pokaż komunikat dla użytkownika
-              Alert.alert('Sukces', 'Lek został usunięty.');
-            } catch (error) {
-              console.error('Error deleting medicine:', error);
-              Alert.alert('Błąd', 'Nie udało się usunąć leku.');
-            } finally {
-              setLoading(false); // schowaj loader
-            }
-          },
-          style: 'destructive'
-        },
-      ]
-    );
-  };
+  const filteredAndSortedMedicines = filterMedicinesByCompletion(medicines)
+    .filter(medicine => medicine.name.toLowerCase().includes(searchText.toLowerCase()));
 
-  const filteredMedicines = medicines.filter(medicine => 
-    medicine.name.toLowerCase().includes(searchText.toLowerCase())
-  );
-
-  // Formatowanie wyświetlania harmonogramu
   const getScheduleDisplay = (medicine) => {
     if (medicine.isRegular) {
       const activeDaysCount = medicine.selectedDays.filter(Boolean).length;
@@ -183,32 +182,47 @@ const MedicinesListScreen = ({ navigation, route }) => {
     }
   };
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.medicineItem}
-      onPress={() => navigation.navigate('MedicineDetails', { medicineId: item.id })}
-    >
-      <View style={styles.iconContainer}>
-        <Ionicons 
-          name={item.isRegular ? "repeat" : "calendar"} 
-          size={24} 
-          color="#4a86e8" 
-        />
-      </View>
-      <View style={styles.medicineInfo}>
-        <Text style={styles.medicineName}>{item.name}</Text>
-        <Text style={styles.medicineDetails}>{getScheduleDisplay(item)}</Text>
-      </View>
+  const renderItem = ({ item }) => {
+    const isLow = item.isRegular && item.quantity !== undefined && item.quantity < 5;
+    return (
       <TouchableOpacity 
-        style={styles.moreButton}
+        style={[styles.medicineItem, item.completed && styles.completedMedicineItem]}
         onPress={() => navigation.navigate('MedicineDetails', { medicineId: item.id })}
       >
-        <Text style={styles.moreButtonText}>Więcej</Text>
+        <View style={styles.iconContainer}>
+          <Ionicons 
+            name={item.isRegular ? "repeat" : item.completed ? "checkmark-circle" : "calendar"} 
+            size={24} 
+            color={item.completed ? "#4CAF50" : "#4a86e8"} 
+          />
+        </View>
+        <View style={styles.medicineInfo}>
+          <View style={styles.medicineNameRow}>
+            <Text style={styles.medicineName}>{item.name}</Text>
+            {item.isRegular && item.quantity !== undefined && (
+              <View style={[styles.pillCountContainer, isLow && styles.pillCountLow]}>
+                <Text style={[styles.pillCountText, isLow && styles.pillCountTextLow]}>
+                  {item.quantity} {item.quantity === 1 ? 'tabletka' : 
+                    (item.quantity > 1 && item.quantity < 5) ? 'tabletki' : 'tabletek'}
+                </Text>
+                {isLow && (
+                  <Ionicons name="warning-outline" size={14} color="#f44336" />
+                )}
+              </View>
+            )}
+          </View>
+          <Text style={styles.medicineDetails}>{getScheduleDisplay(item)}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.moreButton}
+          onPress={() => navigation.navigate('MedicineDetails', { medicineId: item.id })}
+        >
+          <Text style={styles.moreButtonText}>Więcej</Text>
+        </TouchableOpacity>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
-  // Zaktualizowany render z przyciskiem odświeżania i wskaźnikiem ładowania
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
@@ -218,6 +232,20 @@ const MedicinesListScreen = ({ navigation, route }) => {
           value={searchText}
           onChangeText={setSearchText}
         />
+        <TouchableOpacity onPress={toggleSortOption} style={styles.sortButton}>
+          <Ionicons 
+            name={sortOption === 'name' ? "text" : "calendar"} 
+            size={20} 
+            color="#4a86e8" 
+          />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleCompletedView} style={[styles.sortButton, showCompleted && styles.activeFilterButton]}>
+          <Ionicons 
+            name="checkmark-circle" 
+            size={20} 
+            color={showCompleted ? "#fff" : "#4a86e8"} 
+          />
+        </TouchableOpacity>
         <TouchableOpacity onPress={loadMedicines} style={styles.refreshButton}>
           <Ionicons name="refresh" size={20} color="#4a86e8" />
         </TouchableOpacity>
@@ -237,9 +265,25 @@ const MedicinesListScreen = ({ navigation, route }) => {
             <Text style={styles.emptyButtonText}>Dodaj pierwszy lek</Text>
           </TouchableOpacity>
         </View>
+      ) : filteredAndSortedMedicines.length === 0 ? (
+        <View style={styles.centerContainer}>
+          <Text style={styles.emptyText}>
+            {showCompleted ? 
+              'Nie masz żadnych ukończonych leków' : 
+              'Nie znaleziono leków pasujących do wyszukiwania'}
+          </Text>
+          {showCompleted && (
+            <TouchableOpacity 
+              style={styles.emptyButton}
+              onPress={toggleCompletedView}
+            >
+              <Text style={styles.emptyButtonText}>Powrót do aktywnych leków</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       ) : (
         <FlatList
-          data={filteredMedicines}
+          data={filteredAndSortedMedicines}
           renderItem={renderItem}
           keyExtractor={item => item.id}
           style={styles.list}
@@ -248,12 +292,14 @@ const MedicinesListScreen = ({ navigation, route }) => {
         />
       )}
       
-      <TouchableOpacity 
-        style={styles.addButton}
-        onPress={() => navigation.navigate('AddEditMedicine')}
-      >
-        <Ionicons name="add" size={30} color="white" />
-      </TouchableOpacity>
+      {!showCompleted && (
+        <TouchableOpacity 
+          style={styles.addButton}
+          onPress={() => navigation.navigate('AddEditMedicine')}
+        >
+          <Ionicons name="add" size={30} color="white" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -282,6 +328,15 @@ const styles = StyleSheet.create({
     padding: 10,
     marginLeft: 8,
   },
+  sortButton: {
+    padding: 10,
+    marginLeft: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  activeFilterButton: {
+    backgroundColor: '#4a86e8',
+  },
   list: {
     flex: 1,
   },
@@ -299,15 +354,44 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 1.41,
   },
+  completedMedicineItem: {
+    backgroundColor: '#f9f9f9',
+    borderLeftWidth: 4,
+    borderLeftColor: '#4CAF50',
+  },
   iconContainer: {
     marginRight: 16,
   },
   medicineInfo: {
     flex: 1,
   },
+  medicineNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   medicineName: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  pillCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e0e0e0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  pillCountLow: {
+    backgroundColor: '#ffebee',
+  },
+  pillCountText: {
+    fontSize: 12,
+    color: '#333',
+    marginRight: 4,
+  },
+  pillCountTextLow: {
+    color: '#f44336',
   },
   medicineDetails: {
     fontSize: 14,

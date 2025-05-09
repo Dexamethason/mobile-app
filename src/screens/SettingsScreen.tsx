@@ -178,6 +178,29 @@ const SettingsScreen = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Lokalizacja</Text>
+        
+        <View style={styles.settingRow}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Region</Text>
+            <Text style={styles.settingDescription}>
+              Domyślnie: Polska (UTC+1/+2)
+            </Text>
+          </View>
+          <TouchableOpacity 
+            style={styles.regionButton}
+            onPress={() => Alert.alert(
+              'Informacja', 
+              'Ta funkcja będzie dostępna w kolejnej aktualizacji. Obecnie używana jest strefa czasowa Polski.'
+            )}
+          >
+            <Text style={styles.regionButtonText}>Polska</Text>
+            <Ionicons name="chevron-forward" size={20} color="#555" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>O aplikacji</Text>
         <Text style={styles.versionText}>Wersja aplikacji: 1.0.0</Text>
         <Text style={styles.aboutText}>
@@ -283,6 +306,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
+  },
+  regionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 4,
+    backgroundColor: '#f0f0f0',
+  },
+  regionButtonText: {
+    marginRight: 4,
+    fontSize: 14,
+    color: '#555',
   },
 });
 
