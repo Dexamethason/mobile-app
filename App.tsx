@@ -8,7 +8,6 @@ import * as Notifications from 'expo-notifications';
 import { Alert, Platform } from 'react-native';
 import { recordMedicineDose } from './src/utils/historyService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StackScreenProps } from '@react-navigation/stack';
 
 // Import screens
 import MedicinesListScreen from './src/screens/MedicinesListScreen';
@@ -27,44 +26,17 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Define type declarations for navigation
-export type MedicinesStackParamList = {
-  Medicines: undefined;
-  MedicineDetails: { medicineId: string };
-  AddEditMedicine: { medicine?: any };
-};
-
-export type TabParamList = {
-  MedicinesTab: undefined;
-  Reminders: undefined;
-  History: undefined;
-  Settings: undefined;
-};
-
-// Define types for screen props
-export type MedicinesScreenProps = StackScreenProps<MedicinesStackParamList, 'Medicines'>;
-export type MedicineDetailsScreenProps = StackScreenProps<MedicinesStackParamList, 'MedicineDetails'>;
-export type AddEditMedicineScreenProps = StackScreenProps<MedicinesStackParamList, 'AddEditMedicine'>;
-
-const Tab = createBottomTabNavigator<TabParamList>();
-const MedicinesStack = createStackNavigator<MedicinesStackParamList>();
+const Tab = createBottomTabNavigator();
+const MedicinesStack = createStackNavigator();
 
 function MedicinesStackScreen() {
   return (
     <MedicinesStack.Navigator>
-      <MedicinesStack.Screen 
-        name="Medicines" 
-        component={MedicinesListScreen} 
-        options={{ title: 'Lista leków' }} 
-      />
-      <MedicinesStack.Screen 
-        name="MedicineDetails" 
-        component={MedicineDetailsScreen as React.ComponentType<any>} 
-        options={{ title: 'Szczegóły leku' }} 
-      />
+      <MedicinesStack.Screen name="Medicines" component={MedicinesListScreen} options={{ title: 'Lista leków' }} />
+      <MedicinesStack.Screen name="MedicineDetails" component={MedicineDetailsScreen} options={{ title: 'Szczegóły leku' }} />
       <MedicinesStack.Screen 
         name="AddEditMedicine" 
-        component={AddEditMedicineScreen as React.ComponentType<any>} 
+        component={AddEditMedicineScreen} 
         options={({ route }) => ({ 
           title: route.params?.medicine ? 'Edytuj lek' : 'Dodaj nowy lek' 
         })} 
@@ -74,9 +46,9 @@ function MedicinesStackScreen() {
 }
 
 export default function App() {
-  const [notification, setNotification] = useState<Notifications.Notification | false>(false);
-  const notificationListener = useRef<Notifications.Subscription | undefined>();
-  const responseListener = useRef<Notifications.Subscription | undefined>();
+  const [notification, setNotification] = useState(false);
+  const notificationListener = useRef();
+  const responseListener = useRef();
   
   useEffect(() => {
     // Request notification permissions on app start
@@ -87,9 +59,9 @@ export default function App() {
       setNotification(notification);
       
       // Show a dialog when notification is received in foreground
-      const medicineId = notification.request.content.data?.medicineId as string;
-      const medicineName = notification.request.content.data?.medicineName as string;
-      const medicineDosage = notification.request.content.data?.medicineDosage as string;
+      const medicineId = notification.request.content.data?.medicineId;
+      const medicineName = notification.request.content.data?.medicineName;
+      const medicineDosage = notification.request.content.data?.medicineDosage;
       
       if (medicineId) {
         showMedicineTakenDialog(medicineId, medicineName || 'Lek', medicineDosage || '');
@@ -98,9 +70,9 @@ export default function App() {
 
     // This listener is triggered when a user taps on a notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      const medicineId = response.notification.request.content.data?.medicineId as string;
-      const medicineName = response.notification.request.content.data?.medicineName as string;
-      const medicineDosage = response.notification.request.content.data?.medicineDosage as string;
+      const medicineId = response.notification.request.content.data?.medicineId;
+      const medicineName = response.notification.request.content.data?.medicineName;
+      const medicineDosage = response.notification.request.content.data?.medicineDosage;
       
       if (medicineId) {
         showMedicineTakenDialog(medicineId, medicineName || 'Lek', medicineDosage || '');
@@ -108,12 +80,8 @@ export default function App() {
     });
 
     return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
-      }
+      Notifications.removeNotificationSubscription(notificationListener.current);
+      Notifications.removeNotificationSubscription(responseListener.current);
     };
   }, []);
 
@@ -145,7 +113,7 @@ export default function App() {
       const medicinesJson = await AsyncStorage.getItem('medicines');
       if (medicinesJson) {
         const medicines = JSON.parse(medicinesJson);
-        const medicine = medicines.find((m: any) => m.id === medicineId);
+        const medicine = medicines.find(m => m.id === medicineId);
         
         if (medicine) {
           // Update in history
@@ -199,7 +167,7 @@ export default function App() {
       <Tab.Navigator
         screenOptions={({ route }) => ({
           tabBarIcon: ({ focused, color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap = 'help';
+            let iconName;
 
             switch (route.name) {
               case 'MedicinesTab':
@@ -229,17 +197,17 @@ export default function App() {
         />
         <Tab.Screen 
           name="Reminders" 
-          component={RemindersScreen as React.ComponentType<any>} 
+          component={RemindersScreen} 
           options={{ title: 'Przypomnienia' }}
         />
         <Tab.Screen 
           name="History" 
-          component={HistoryScreen as React.ComponentType<any>} 
+          component={HistoryScreen} 
           options={{ title: 'Historia' }}
         />
         <Tab.Screen 
           name="Settings" 
-          component={SettingsScreen as React.ComponentType<any>} 
+          component={SettingsScreen} 
           options={{ title: 'Ustawienia' }}
         />
       </Tab.Navigator>
