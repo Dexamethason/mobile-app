@@ -88,6 +88,19 @@ const loadReminders = useCallback(async () => {
     setLoading(true);
     console.log("Loading reminders data...");
 
+    // Sprawdź czy nastąpił pełny reset historii
+    const resetInfoJson = await AsyncStorage.getItem('historyResetTimestamp');
+    if (resetInfoJson) {
+      const resetInfo = JSON.parse(resetInfoJson);
+      // Jeśli był pełny reset i minęło mniej niż 10 sekund od resetu
+      if (resetInfo.fullReset && (Date.now() - resetInfo.timestamp < 10000)) {
+        console.log("Full history reset detected, clearing reminders");
+        setReminders([]);
+        setLoading(false);
+        return;
+      }
+    }
+
     // dane o lekach
     const medicinesJson = await AsyncStorage.getItem('medicines');
     const medicines: MedicineData[] = medicinesJson ? JSON.parse(medicinesJson) : [];

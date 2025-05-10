@@ -42,20 +42,37 @@ const SettingsScreen = () => {
   const resetHistory = async () => {
     Alert.alert(
       'Reset historii',
-      'Czy na pewno chcesz zresetować całą historię zażywania leków? Tej operacji nie można cofnąć.',
+      'Wybierz rodzaj resetu historii:',
       [
         {
           text: 'Anuluj',
           style: 'cancel',
         },
         { 
-          text: 'Reset', 
+          text: 'Reset z odtworzeniem', 
           onPress: async () => {
             try {
-              const success = await resetAllHistory();
+              const success = await resetAllHistory(true);
               
               if (success) {
                 Alert.alert('Sukces', 'Historia została zresetowana i zaplanowane leki zostały ponownie wczytane.');
+              } else {
+                Alert.alert('Błąd', 'Wystąpił problem podczas resetowania historii.');
+              }
+            } catch (error) {
+              console.error('Błąd podczas resetowania historii:', error);
+              Alert.alert('Błąd', 'Nie udało się zresetować historii.');
+            }
+          },
+        },
+        { 
+          text: 'Pełny reset', 
+          onPress: async () => {
+            try {
+              const success = await resetAllHistory(false);
+              
+              if (success) {
+                Alert.alert('Sukces', 'Historia została całkowicie wyczyszczona bez odtwarzania wpisów.');
               } else {
                 Alert.alert('Błąd', 'Wystąpił problem podczas resetowania historii.');
               }

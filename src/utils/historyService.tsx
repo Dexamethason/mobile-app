@@ -5,6 +5,9 @@ import { pl } from 'date-fns/locale';
 // typy statusu leku
 export type MedicineStatus = 'taken' | 'skipped' | 'planned';
 
+// Klucz do śledzenia zresetowania historii
+const HISTORY_RESET_KEY = 'historyResetTimestamp';
+
 interface Medicine {
   id: string;
   name: string;
@@ -115,9 +118,9 @@ export const recordMedicineDose = async (medicine: Medicine, status: MedicineSta
 };
 
 // resetuj całą historię i przywróć domyślny stan
-export const resetAllHistory = async () => {
+export const resetAllHistory = async (restorePlannedEntries: boolean = true) => {
   try {
-    console.log("Starting complete history reset");
+    console.log(`Starting complete history reset (restorePlannedEntries=${restorePlannedEntries})`);
     
     // usuwamy całą historię
     await AsyncStorage.removeItem('medicineHistory');
@@ -125,6 +128,21 @@ export const resetAllHistory = async () => {
     // tworzymy pustą historię
     const emptyHistory = {};
     await AsyncStorage.setItem('medicineHistory', JSON.stringify(emptyHistory));
+
+    // Zapisz timestamp resetu i flagę czy był to pełny reset
+    const resetInfo = {
+      timestamp: Date.now(),
+      fullReset: !restorePlannedEntries
+    };
+    await AsyncStorage.setItem(HISTORY_RESET_KEY, JSON.stringify(resetInfo));
+    console.log(`History reset timestamp saved: ${resetInfo.timestamp}, fullReset: ${resetInfo.fullReset}`);
+    
+    // Jeśli nie chcemy odtwarzać wpisów, skipujemy
+    if (!restorePlannedEntries) {
+      console.log("History reset completed without restoring entries");
+      await debugHistory("After history reset (without restoration)");
+      return true;
+    }
     
     // pobierz zapisane leki żeby odtworzyć wpisy
     const medicinesJson = await AsyncStorage.getItem('medicines');
