@@ -5,7 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, Vibration } from 'react-native';
 import { recordMedicineDose } from './src/utils/historyService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -28,6 +28,43 @@ Notifications.setNotificationHandler({
 
 const Tab = createBottomTabNavigator();
 const MedicinesStack = createStackNavigator();
+
+// config wibracji
+const VIBRATION_PATTERN = Platform.OS === 'ios' 
+  ? [1000, 2000, 1000] // iOS: wibracja, pauza, wibracja
+  : [0, 1000, 500, 1000, 500, 1000]; // Android: opóźnienie, wibracja, pauza, wibracja
+
+// Zarządzanie ciągłą wibracją
+let vibrationIntervalId: NodeJS.Timeout | null = null;
+
+// I cyk robimy wibracje
+const startContinuousVibration = () => {
+  // Zatrzymaj istniejącą wibrację jeśli istnieje
+  stopContinuousVibration();
+  
+  // Różne podejście dla iOS i Android bo coś się spie...rniczyło
+  if (Platform.OS === 'ios') {
+    // iOS podobno nie ma ciłagej wibracji, więc interwał wlatuje
+    vibrationIntervalId = setInterval(() => {
+      Vibration.vibrate(VIBRATION_PATTERN);
+    }, 4000); // Repeat co 4 sek
+    
+    // Uruchomienie wibracji od razu
+    Vibration.vibrate(VIBRATION_PATTERN);
+  } else {
+    // Android obsługuje wibrację z nieskończonym powtórzeniem (true)
+    Vibration.vibrate(VIBRATION_PATTERN, true);
+  }
+};
+
+// Funkcja na cancel wibracji
+const stopContinuousVibration = () => {
+  if (vibrationIntervalId) {
+    clearInterval(vibrationIntervalId);
+    vibrationIntervalId = null;
+  }
+  Vibration.cancel(); 
+};
 
 function MedicinesStackScreen() {
   return (
@@ -64,6 +101,8 @@ export default function App() {
       const medicineDosage = notification.request.content.data?.medicineDosage;
       
       if (medicineId) {
+        // Rozpocznij ciągłą wibrację przy otrzymaniu powiadomienia w pierwszym planie
+        startContinuousVibration();
         showMedicineTakenDialog(medicineId, medicineName || 'Lek', medicineDosage || '');
       }
     });
@@ -75,11 +114,15 @@ export default function App() {
       const medicineDosage = response.notification.request.content.data?.medicineDosage;
       
       if (medicineId) {
+        // Rozpocznij ciągłą wibrację gdy użytkownik tapnie na powiadomienie
+        startContinuousVibration();
         showMedicineTakenDialog(medicineId, medicineName || 'Lek', medicineDosage || '');
       }
     });
 
     return () => {
+      // Zatrzymaj wszystkie wibracje przy odmontowaniu komponentu (np. przy zamknięciu aplikacji)
+      stopContinuousVibration();
       Notifications.removeNotificationSubscription(notificationListener.current);
       Notifications.removeNotificationSubscription(responseListener.current);
     };
@@ -109,6 +152,9 @@ export default function App() {
   // Update medicine status in history
   const updateMedicineStatus = async (medicineId: string, name: string, dosage: string, status: 'taken' | 'skipped') => {
     try {
+      // Zatrzymaj ciągłą wibrację po interakcji użytkownika
+      stopContinuousVibration();
+      
       // First get the medicine details
       const medicinesJson = await AsyncStorage.getItem('medicines');
       if (medicinesJson) {
