@@ -9,6 +9,8 @@ interface Medicine {
   isRegular: boolean;
   oneTimeDate: string;
   oneTimeTime: string;
+  times?: string[];
+  selectedDays?: boolean[];
 }
 
 // ustawienia handlera 
@@ -20,82 +22,105 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// funkcja do planowania powiadomień (jednorazowe leki)
+// zapis klucza powiązań leków z powiadomieniami
+const NOTIFICATION_MAP_KEY = 'medicineNotifications';
+
+// harmonogram powiadomień – dla jednorazowego
 export const scheduleOneTimeMedicineNotification = async (medicine: Medicine) => {
-  try {
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') {
-      console.log('Brak uprawnień do powiadomień');
-      return;
-    }
+  const date = new Date(medicine.oneTimeDate);
+  const [hours, minutes] = medicine.oneTimeTime.split(':');
+  date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-    // data powiadomienia
-    const notificationDate = new Date(medicine.oneTimeDate);
-    const [hours, minutes] = medicine.oneTimeTime.split(':');
-    notificationDate.setHours(parseInt(hours), parseInt(minutes), 0);
+  if (date <= new Date()) return;
 
-    // sprawdzamy czy nie w przeszłości
-    if (notificationDate <= new Date()) {
-      console.log('Data powiadomienia jest z przeszłości');
-      return;
-    }
-
-    // Planujemy powiadomienie
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Czas na lek: ${medicine.name}`,
-        body: `Dawka: ${medicine.dosage}`,
-        data: { 
-          medicineId: medicine.id,
-          medicineName: medicine.name,
-          medicineDosage: medicine.dosage
-        },
+  const id = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: `Czas na lek: ${medicine.name}`,
+      body: `Dawka: ${medicine.dosage}`,
+      data: {
+        medicineId: medicine.id,
+        medicineName: medicine.name,
+        medicineDosage: medicine.dosage,
       },
-      trigger: {
-        date: notificationDate,
-        type: 'date',
-      },
-    });
+    },
+    trigger: date,
+  });
 
-    // zapisujemy id
-    const notificationsMap = await AsyncStorage.getItem('medicineNotifications') || '{}';
-    const notifications = JSON.parse(notificationsMap);
-    notifications[medicine.id] = notificationId;
-    await AsyncStorage.setItem('medicineNotifications', JSON.stringify(notifications));
+  await saveNotificationId(medicine.id, id);
+  return id;
+};
 
-    return notificationId;
-  } catch (error) {
-    console.error('Błąd podczas planowania powiadomienia:', error);
+// harmonogram powiadomień – dla regularnego
+export const scheduleRegularMedicineNotifications = async (medicine: Medicine) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() + i);
+    const weekday = date.getDay(); // 0 - niedziela
+
+    if (!medicine.selectedDays?.[weekday]) continue;
+
+    for (const time of medicine.times || []) {
+      const [hours, minutes] = time.split(':');
+      const triggerTime = new Date(date);
+      triggerTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+      if (triggerTime > new Date()) {
+        const id = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `Czas na lek: ${medicine.name}`,
+            body: `Dawka: ${medicine.dosage}`,
+            data: {
+              medicineId: medicine.id,
+              medicineName: medicine.name,
+              medicineDosage: medicine.dosage,
+            },
+          },
+          trigger: triggerTime,
+        });
+
+        await saveNotificationId(medicine.id, id);
+      }
+    }
   }
 };
 
-// anulowanie powiadomień
+// zapisuje identyfikatory powiadomień dla danego leku
+const saveNotificationId = async (medicineId: string, notificationId: string) => {
+  const raw = await AsyncStorage.getItem(NOTIFICATION_MAP_KEY);
+  const map = raw ? JSON.parse(raw) : {};
+  if (!map[medicineId]) map[medicineId] = [];
+  map[medicineId].push(notificationId);
+  await AsyncStorage.setItem(NOTIFICATION_MAP_KEY, JSON.stringify(map));
+};
+
+// anulowanie powiadomień dla danego leku
 export const cancelMedicineNotification = async (medicineId: string) => {
-  try {
-    const notificationsMap = await AsyncStorage.getItem('medicineNotifications') || '{}';
-    const notifications = JSON.parse(notificationsMap);
-    
-    if (notifications[medicineId]) {
-      await Notifications.cancelScheduledNotificationAsync(notifications[medicineId]);
-      delete notifications[medicineId];
-      await AsyncStorage.setItem('medicineNotifications', JSON.stringify(notifications));
+  const raw = await AsyncStorage.getItem(NOTIFICATION_MAP_KEY);
+  const map = raw ? JSON.parse(raw) : {};
+
+  if (map[medicineId]) {
+    for (const notifId of map[medicineId]) {
+      await Notifications.cancelScheduledNotificationAsync(notifId);
     }
-  } catch (error) {
-    console.error('Błąd podczas anulowania powiadomienia:', error);
+    delete map[medicineId];
+    await AsyncStorage.setItem(NOTIFICATION_MAP_KEY, JSON.stringify(map));
   }
 };
 
 // aktualizacja powiadomień
 export const updateMedicineNotification = async (medicine: Medicine) => {
   try {
-    // najpierw usuwamy stare
     await cancelMedicineNotification(medicine.id);
-    
-    // jak jednorazowy to planujemy nowe
-    if (!medicine.isRegular) {
+
+    if (medicine.isRegular) {
+      await scheduleRegularMedicineNotifications(medicine);
+    } else {
       await scheduleOneTimeMedicineNotification(medicine);
     }
   } catch (error) {
-    console.error('Błąd podczas aktualizacji powiadomienia:', error);
+    console.error('Błąd podczas aktualizacji powiadomień:', error);
   }
 };

@@ -16,27 +16,84 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateMedicineNotification } from '../utils/notifications';
 import { recordMedicineDose, updateMedicineReferencesInHistory, removeFromHistory } from '../utils/historyService';
 
-const AddEditMedicineScreen = ({ route, navigation }) => {
+// Dodajemy interfejsy dla lepszego typowania
+interface Medicine {
+  id: string;
+  name: string;
+  dosage: string;
+  quantity?: number;
+  notes?: string;
+  isRegular: boolean;
+  times?: string[];
+  selectedDays?: boolean[];
+  oneTimeDate?: string;
+  oneTimeTime?: string;
+  schedule?: string;
+  completed?: boolean;
+  history?: any[];
+}
+
+interface TimeObject {
+  time: string;
+  enabled: boolean;
+}
+
+interface RouteParams {
+  medicine?: Medicine;
+  refresh?: boolean;
+}
+
+interface NavigationProps {
+  navigate: (screen: string, params?: any) => void;
+  goBack: () => void;
+}
+
+interface AddEditMedicineScreenProps {
+  route: { params?: RouteParams };
+  navigation: NavigationProps;
+}
+
+const AddEditMedicineScreen: React.FC<AddEditMedicineScreenProps> = ({ route, navigation }) => {
   const editingMedicine = route.params?.medicine;
   const isEditing = !!editingMedicine;
 
   // podstawowe info o leku
   const [name, setName] = useState(isEditing ? editingMedicine.name : '');
   const [dosage, setDosage] = useState(isEditing ? editingMedicine.dosage : '');
-  const [quantity, setQuantity] = useState(isEditing ? editingMedicine.quantity?.toString() || '30' : '');
-  const [notes, setNotes] = useState(isEditing ? editingMedicine.notes : '');
+  const [dosageValue, setDosageValue] = useState(() => {
+    if (isEditing && editingMedicine.dosage) {
+      // z "500mg" wyciąga wartość
+      const match = editingMedicine.dosage.match(/^(\d+(?:\.\d+)?)/);
+      return match ? match[1] : '';
+    }
+    return '';
+  });
+  const [dosageUnit, setDosageUnit] = useState(() => {
+    if (isEditing && editingMedicine.dosage) {
+      // z "500mg" wyciąga "mg"
+      const match = editingMedicine.dosage.match(/[a-zA-Z]+$/);
+      return match ? match[0] : 'mg';
+    }
+    return 'mg';
+  });
+  const [showUnitPickerModal, setShowUnitPickerModal] = useState(false);
+  const [tempDosageUnit, setTempDosageUnit] = useState('mg');
+  const dosageUnits = ['mg', 'ml', 'g'];
+  
+  const [quantity, setQuantity] = useState(isEditing ? editingMedicine.quantity?.toString() || '30' : '30');
+  const [notes, setNotes] = useState(isEditing ? editingMedicine.notes || '' : '');
   
   // Typ harmonogramu
   const [isRegular, setIsRegular] = useState(isEditing ? editingMedicine.isRegular !== false : true);
   
   // dla regularnego harmonogramu
-  const [times, setTimes] = useState(isEditing && editingMedicine.times ? 
+  const [times, setTimes] = useState<TimeObject[]>(isEditing && editingMedicine.times ? 
     editingMedicine.times.map(time => ({ time, enabled: true })) : 
     [{ time: '08:00', enabled: true }]
   );
   
   // dni tygodnia dla reg leków (domyślnie wszystkie dni)
-  const [selectedDays, setSelectedDays] = useState(isEditing && editingMedicine.selectedDays ? 
+  const [selectedDays, setSelectedDays] = useState<boolean[]>(isEditing && editingMedicine.selectedDays ? 
     editingMedicine.selectedDays : 
     [true, true, true, true, true, true, true]
   );
@@ -74,14 +131,14 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
   };
 
   // usuwanie czasu
-  const handleRemoveTime = (index) => {
+  const handleRemoveTime = (index: number) => {
     const newTimes = [...times];
     newTimes.splice(index, 1);
     setTimes(newTimes);
   };
 
   // pokazanie modala z wyborem godziny
-  const showTimePickerForIndex = (index, isOneTime = false) => {
+  const showTimePickerForIndex = (index: number, isOneTime = false) => {
     if (isOneTime) {
       const [hours, minutes] = oneTimeTime.split(':');
       setTempHours(hours);
@@ -110,13 +167,13 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
     setShowTimePickerModal(false);
   };
 
-  const toggleTimeEnabled = (index) => {
+  const toggleTimeEnabled = (index: number) => {
     const newTimes = [...times];
     newTimes[index] = { ...newTimes[index], enabled: !newTimes[index].enabled };
     setTimes(newTimes);
   };
 
-  const toggleDay = (index) => {
+  const toggleDay = (index: number) => {
     const newSelectedDays = [...selectedDays];
     newSelectedDays[index] = !newSelectedDays[index];
     setSelectedDays(newSelectedDays);
@@ -132,6 +189,18 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
     setShowDatePickerModal(false);
   };
 
+  const showUnitPicker = () => {
+    setTempDosageUnit(dosageUnit);
+    setShowUnitPickerModal(true);
+  };
+
+  const handleUnitConfirm = () => {
+    setDosageUnit(tempDosageUnit);
+    setShowUnitPickerModal(false);
+    // Aktualizuj również główne pole dosage
+    setDosage(`${dosageValue}${tempDosageUnit}`);
+  };
+  
   const addDay = () => {
     const nextDay = new Date(tempDate);
     nextDay.setDate(nextDay.getDate() + 1);
@@ -144,7 +213,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
     setTempDate(prevDay);
   };
 
-  const formatDate = (date) => {
+  const formatDate = (date: Date) => {
     return date.toLocaleDateString('pl-PL', { 
       year: 'numeric', 
       month: 'long', 
@@ -169,7 +238,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
       `Jednorazowo: ${formatDate(oneTimeDate)}`;
 
     // obiekt z danymi leku
-    const medicineData = {
+    const medicineData: Medicine = {
       id: isEditing ? editingMedicine.id : Date.now().toString(),
       name,
       dosage,
@@ -187,9 +256,8 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
       console.log('Saving medicine data:', medicineData);
       
       // aktualizujemy powiadomienie
-      await updateMedicineNotification(medicineData);
+      await updateMedicineNotification(medicineData as any); // Używamy "any" aby ominąć sprawdzanie typów
       
-
       let scheduleChanged = false;
       
       if (isEditing) {
@@ -200,7 +268,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
         } else if (isRegular) {
           // lek regularny - sprawdź czy czas sie zmienił
           const oldTimes = new Set(editingMedicine.times || []);
-          const newTimes = new Set(medicineData.times);
+          const newTimes = new Set(medicineData.times || []);
           
           if (oldTimes.size !== newTimes.size) {
             scheduleChanged = true;
@@ -215,7 +283,8 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
           }
         } else {
           if (editingMedicine.oneTimeTime !== oneTimeTime || 
-              new Date(editingMedicine.oneTimeDate).toDateString() !== oneTimeDate.toDateString()) {
+             (editingMedicine.oneTimeDate && 
+              new Date(editingMedicine.oneTimeDate).toDateString() !== oneTimeDate.toDateString())) {
             scheduleChanged = true;
           }
         }
@@ -242,11 +311,13 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
           
           // dodajemy nowe
           if (isRegular) {
-            for (const time of medicineData.times) {
-              const [hours, minutes] = time.split(':');
-              const scheduleTime = new Date();
-              scheduleTime.setHours(parseInt(hours), parseInt(minutes));
-              await recordMedicineDose(medicineData, 'planned', scheduleTime);
+            if (medicineData.times && medicineData.times.length > 0) {
+              for (const time of medicineData.times) {
+                const [hours, minutes] = time.split(':');
+                const scheduleTime = new Date();
+                scheduleTime.setHours(parseInt(hours), parseInt(minutes));
+                await recordMedicineDose(medicineData, 'planned', scheduleTime);
+              }
             }
           } else {
             const selectedDate = new Date(oneTimeDate);
@@ -267,7 +338,7 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
         
         if (isEditing) {
           // update istniejącego leku
-          updatedMedicines = storedMedicines.map(med => 
+          updatedMedicines = storedMedicines.map((med: Medicine) => 
             med.id === medicineData.id ? medicineData : med
           );
         } else {
@@ -309,12 +380,25 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
 
       <View style={styles.formGroup}>
         <Text style={styles.label}>Dawka</Text>
-        <TextInput
-          style={styles.input}
-          value={dosage}
-          onChangeText={setDosage}
-          placeholder="Np. 500mg"
-        />
+        <View style={styles.dosageContainer}>
+          <TextInput
+            style={styles.dosageInput}
+            value={dosageValue}
+            onChangeText={(value) => {
+              setDosageValue(value);
+              setDosage(`${value}${dosageUnit}`);
+            }}
+            placeholder="Np. 500"
+            keyboardType="numeric"
+          />
+          <TouchableOpacity 
+            style={styles.unitButton}
+            onPress={showUnitPicker}
+          >
+            <Text style={styles.unitButtonText}>{dosageUnit}</Text>
+            <Ionicons name="chevron-down" size={16} color="#555" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.formGroup}>
@@ -580,6 +664,54 @@ const AddEditMedicineScreen = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* modal do wyboru jednostki dawki */}
+      <Modal
+        visible={showUnitPickerModal}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Wybierz jednostkę</Text>
+            
+            <View style={styles.unitPickerContainer}>
+              {dosageUnits.map(unit => (
+                <TouchableOpacity 
+                  key={unit}
+                  style={[
+                    styles.unitPickerItem, 
+                    unit === tempDosageUnit && styles.unitPickerItemSelected
+                  ]}
+                  onPress={() => setTempDosageUnit(unit)}
+                >
+                  <Text style={[
+                    styles.unitPickerItemText,
+                    unit === tempDosageUnit && styles.unitPickerItemTextSelected
+                  ]}>
+                    {unit}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <View style={styles.modalButtonsContainer}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowUnitPickerModal(false)}
+              >
+                <Text style={styles.modalButtonText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={handleUnitConfirm}
+              >
+                <Text style={[styles.modalButtonText, {color: 'white'}]}>Potwierdź</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -811,6 +943,54 @@ const styles = StyleSheet.create({
   dateDisplay: {
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  dosageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dosageInput: {
+    flex: 1,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginRight: 10,
+  },
+  unitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  unitButtonText: {
+    fontSize: 16,
+    marginRight: 5,
+  },
+  unitPickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+  },
+  unitPickerItem: {
+    padding: 10,
+    alignItems: 'center',
+  },
+  unitPickerItemSelected: {
+    backgroundColor: '#e6f0ff',
+    borderRadius: 4,
+  },
+  unitPickerItemText: {
+    fontSize: 18,
+  },
+  unitPickerItemTextSelected: {
+    fontWeight: 'bold',
+    color: '#4a86e8',
   },
 });
 
