@@ -182,10 +182,28 @@ const loadReminders = useCallback(async () => {
                 if (existingRecord) {
                   status = existingRecord.status as 'planned' | 'taken' | 'skipped';
                 } else if (isPast) {
-                  status = 'skipped';
+                  // Sprawdź czy minęło więcej niż 2 godziny od czasu przypomnienia
+                  const currentTime = new Date();
+                  const reminderTime = new Date(medicineTime);
+                  const timeDiffMs = currentTime.getTime() - reminderTime.getTime();
+                  const twoHoursMs = 2 * 60 * 60 * 1000;
+                  
+                  // Oznacz jako pominięty tylko jeśli minęło więcej niż 2 godziny
+                  if (timeDiffMs > twoHoursMs) {
+                    status = 'skipped';
+                  }
                 }
               } else if (isPast) {
-                status = 'skipped';
+                // Sprawdź czy minęło więcej niż 2 godziny od czasu przypomnienia
+                const currentTime = new Date();
+                const reminderTime = new Date(medicineTime);
+                const timeDiffMs = currentTime.getTime() - reminderTime.getTime();
+                const twoHoursMs = 2 * 60 * 60 * 1000;
+                
+                // Oznacz jako pominięty tylko jeśli minęło więcej niż 2 godziny
+                if (timeDiffMs > twoHoursMs) {
+                  status = 'skipped';
+                }
               }
               
               // nowe przypomnienie
@@ -236,10 +254,26 @@ const loadReminders = useCallback(async () => {
               if (historyRecord) {
                 status = historyRecord.status as 'planned' | 'taken' | 'skipped';
               } else if (isPast) {
-                status = 'skipped';
+                // Sprawdź czy minęło więcej niż 2 godziny
+                const currentTime = new Date();
+                const reminderTime = new Date(medicineTime);
+                const timeDiffMs = currentTime.getTime() - reminderTime.getTime();
+                const twoHoursMs = 2 * 60 * 60 * 1000;
+                
+                if (timeDiffMs > twoHoursMs) {
+                  status = 'skipped';
+                }
               }
             } else if (isPast) {
-              status = 'skipped';
+              // Sprawdź czy minęło więcej niż 2 godziny
+              const currentTime = new Date();
+              const reminderTime = new Date(medicineTime);
+              const timeDiffMs = currentTime.getTime() - reminderTime.getTime();
+              const twoHoursMs = 2 * 60 * 60 * 1000;
+              
+              if (timeDiffMs > twoHoursMs) {
+                status = 'skipped';
+              }
             }
             
             // nowe przypomnienie
