@@ -57,26 +57,22 @@ export const recordMedicineDose = async (medicine: Medicine, status: MedicineSta
     const historyJson = await AsyncStorage.getItem('medicineHistory');
     const history = historyJson ? JSON.parse(historyJson) : {};
     
+    // fix bo ten spaghetti kod nie ogarnia
+    const isExplicitlyPlanned = status === 'planned';
+    
     // tworzymy rekord - przyszłe zawsze jako planned
     const isFuture = date > now;
+    
     // domyślny status zależy od daty (planned dla przyszłości, skipped dla przeszłości)
-    let defaultStatus: MedicineStatus = isFuture ? 'planned' : 'skipped';
+    // ale respektujemy jawnie podany status "planned"
+    let defaultStatus: MedicineStatus = isFuture || isExplicitlyPlanned ? 'planned' : 'skipped';
     
     // jak podany status i nie jest w przyszłości to bierzemy podany
-    const finalStatus = isFuture ? 'planned' : status;
+    const finalStatus = (isFuture || isExplicitlyPlanned) ? 'planned' : status;
     
     const formattedTime = formatTime(date);
     
-    const medicineRecord = {
-      id: `${medicine.id}_${Date.now()}`,
-      name: medicine.name,
-      dosage: medicine.dosage,
-      time: formattedTime,
-      status: finalStatus,
-      timestamp: date.toISOString()
-    };
-    
-    console.log(`Recording medicine ${medicine.name} for ${dateString}, status=${medicineRecord.status}, isFuture=${isFuture}`);
+    console.log(`Recording medicine ${medicine.name} for ${dateString}, status=${finalStatus}, isFuture=${isFuture}, isExplicitlyPlanned=${isExplicitlyPlanned}`);
     
     // dodajemy nowy wpis dla daty jeśli nie ma
     if (!history[dateString]) {
@@ -84,24 +80,51 @@ export const recordMedicineDose = async (medicine: Medicine, status: MedicineSta
     }
     
     // szukamy czy już jest taki lek o tej porze
-    const existingIndex = history[dateString].findIndex((record: any) => 
-      record.id.startsWith(`${medicine.id}_`) && record.time === formattedTime
-    );
+    const [hours, minutes] = formattedTime.split(':').map(Number);
+    const targetTimeMs = hours * 60 * 60 * 1000 + minutes * 60 * 1000;
+    const toleranceMs = 5 * 60 * 1000; // 5 minut tolerancji
+    
+    // szukamy istniejącego wpisu tego samego leku w podobnym czasie
+    const existingIndex = history[dateString].findIndex((record: any) => {
+      if (!record.id.startsWith(`${medicine.id}_`)) return false;
+      
+      // Sprawdzamy, czy czas jest zbliżony (w zakresie ±5 minut)
+      const [recHours, recMinutes] = record.time.split(':').map(Number);
+      const recordTimeMs = recHours * 60 * 60 * 1000 + recMinutes * 60 * 1000;
+      const timeDiffMs = Math.abs(targetTimeMs - recordTimeMs);
+      
+      return timeDiffMs <= toleranceMs;
+    });
     
     if (existingIndex !== -1) {
-      console.log(`Updating existing record at index ${existingIndex}`);
-      // aktualizuj istniejący rekord ale zachowaj status dla przeszłych
-      if (isFuture) {
-        // przyszłe zawsze planned
+      console.log(`Updating existing record at index ${existingIndex} for medicine ${medicine.name} from status=${history[dateString][existingIndex].status} to ${finalStatus}`);
+      
+      // aktualizuj istniejący rekord
+      if (isFuture || isExplicitlyPlanned) {
+        // przyszłe lub jawnie zaplanowane zawsze jako planned
         history[dateString][existingIndex].status = 'planned';
       } else {
         // dla przeszłych aktualizujemy status
-        history[dateString][existingIndex].status = status;
+        const existingStatus = history[dateString][existingIndex].status;
+        
+        if (finalStatus === 'taken' || existingStatus === 'planned') {
+          history[dateString][existingIndex].status = finalStatus;
+        } else {
+          console.log(`Not downgrading status from ${existingStatus} to ${finalStatus}`);
+        }
       }
       history[dateString][existingIndex].timestamp = date.toISOString();
     } else {
-      console.log(`Adding new record`);
+      console.log(`Adding new record for medicine ${medicine.name}`);
       // dodaj nowy rekord
+      const medicineRecord = {
+        id: `${medicine.id}_${Date.now()}`,
+        name: medicine.name,
+        dosage: medicine.dosage,
+        time: formattedTime,
+        status: finalStatus,
+        timestamp: date.toISOString()
+      };
       history[dateString].push(medicineRecord);
     }
     

@@ -292,7 +292,15 @@ const AddEditMedicineScreen: React.FC<AddEditMedicineScreenProps> = ({ route, na
       
       if (!isEditing) {
         if (isRegular) {
-          await recordMedicineDose(medicineData, 'planned', new Date());
+          // POPRAWKA: Używamy wszystkich zaplanowanych godzin zamiast aktualnej godziny
+          if (medicineData.times && medicineData.times.length > 0) {
+            for (const time of medicineData.times) {
+              const [hours, minutes] = time.split(':');
+              const scheduleTime = new Date();
+              scheduleTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+              await recordMedicineDose(medicineData, 'planned', scheduleTime);
+            }
+          }
         } else {
           const selectedDate = new Date(oneTimeDate);
           const [hours, minutes] = oneTimeTime.split(':');

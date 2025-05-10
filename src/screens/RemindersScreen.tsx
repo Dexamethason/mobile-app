@@ -92,8 +92,7 @@ const loadReminders = useCallback(async () => {
     const resetInfoJson = await AsyncStorage.getItem('historyResetTimestamp');
     if (resetInfoJson) {
       const resetInfo = JSON.parse(resetInfoJson);
-      // Jeśli był pełny reset i minęło mniej niż 10 sekund od resetu
-      if (resetInfo.fullReset && (Date.now() - resetInfo.timestamp < 10000)) {
+      if (resetInfo.fullReset && (Date.now() - resetInfo.timestamp < 60000)) {
         console.log("Full history reset detected, clearing reminders");
         setReminders([]);
         setLoading(false);
@@ -133,6 +132,12 @@ const loadReminders = useCallback(async () => {
     // Dla jednorazowych, generujemy wszystkie, nawet te oddalone w czasie
     
     for (const medicine of medicines) {
+      // Pomijamy ukończone leki jednorazowe
+      if (!medicine.isRegular && medicine.completed) {
+        console.log(`Skipping completed one-time medicine: ${medicine.name}`);
+        continue;
+      }
+
       if (medicine.isRegular) {
         // obsługa regularnych leków - 7 dni
         for (let i = 0; i < 7; i++) {
@@ -148,8 +153,52 @@ const loadReminders = useCallback(async () => {
           // sprawdzamy czy są czasy przypomnień
           if (medicine.times && medicine.times.length > 0) {
             for (const time of medicine.times) {
-              // istniejący kod dla regularnych leków
-              // ...
+              const [hours, minutes] = time.split(':');
+              const medicineTime = new Date(date);
+              medicineTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+              
+              const isPast = medicineTime < today;
+              const dateString = getLocalDateString(date);
+              
+              // sprawdzamy status w historii
+              let status: 'planned' | 'taken' | 'skipped' = 'planned';
+              
+              if (history && history[dateString]) {
+                // Wyszukujemy wpisy tego samego leku z podobną godziną (±5 minut)
+                const targetTimeMs = parseInt(hours) * 60 * 60 * 1000 + parseInt(minutes) * 60 * 1000;
+                const toleranceMs = 5 * 60 * 1000; // 5 minut tolerancji
+                
+                const existingRecord = history[dateString]?.find(record => {
+                  if (!record.id.startsWith(`${medicine.id}_`)) return false;
+                  
+                  // Sprawdzamy, czy czas jest zbliżony
+                  const [recHours, recMinutes] = record.time.split(':').map(Number);
+                  const recordTimeMs = recHours * 60 * 60 * 1000 + recMinutes * 60 * 1000;
+                  const timeDiffMs = Math.abs(targetTimeMs - recordTimeMs);
+                  
+                  return timeDiffMs <= toleranceMs;
+                });
+                
+                if (existingRecord) {
+                  status = existingRecord.status as 'planned' | 'taken' | 'skipped';
+                } else if (isPast) {
+                  status = 'skipped';
+                }
+              } else if (isPast) {
+                status = 'skipped';
+              }
+              
+              // nowe przypomnienie
+              generatedReminders.push({
+                id: `${medicine.id}_${dateString}_${time}`,
+                medicineId: medicine.id,
+                medicineName: medicine.name,
+                medicineDosage: medicine.dosage,
+                date: dateString,
+                time: time,
+                status,
+                timestamp: medicineTime.toISOString()
+              });
             }
           }
         }
@@ -158,10 +207,6 @@ const loadReminders = useCallback(async () => {
         if (medicine.oneTimeDate) {
           const medicineDate = new Date(medicine.oneTimeDate);
           medicineDate.setHours(0, 0, 0, 0);
-          
-          // Usuwamy limit 7 dni - pokazujemy wszystkie jednorazowe leki
-          // także te w odległej przyszłości dla widoku "wszystkie"
-          // if (medicineDate >= todayAtMidnight && medicineDate <= nextWeek) {
           
           // Pokazujemy wszystkie przyszłe i dzisiejsze jednorazowe leki
           if (medicineDate >= todayAtMidnight) {
